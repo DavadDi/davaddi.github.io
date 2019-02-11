@@ -300,19 +300,67 @@
     
     
         <article class="index-post">
-            <a class="abstract-title" href="/2019/02/08/istio-pilot/">
+            <a class="abstract-title" href="/2019/02/15/istio-source-mixer/">
                 
-                    <span>istio pilot-discovery 源码分析</span>
+                    <span>Istio源码系列4：mixer 源码分析</span>
             </a>
             <div class="abstract-content">
-                架构
+                
+本系列链接：
+
+Istio源码系列1：pilot-agent 源码分析
+Istio源码系列2：citadel 源码分析
+Istio源码系列3：pilot-discovery 源码分析
+Istio源码系列4：mixer 源码分析
+
+
+
+TODO
+
+除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。
+
+
+            </div>
+            <div class="abstract-post-meta">
+                <!-- date  -->
+                <div class="abstract-date">
+                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2019/02/15</span>
+                </div>
+                <!-- tags  -->
+                
+                <div class="abstract-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="istio">istio</a>
+    
+</div>
+                
+            </div>
+        </article>
+    
+    
+    
+        <article class="index-post">
+            <a class="abstract-title" href="/2019/02/08/istio-source-pilot/">
+                
+                    <span>Istio源码系列3：pilot-discovery 源码分析</span>
+            </a>
+            <div class="abstract-content">
+                
+本系列链接：
+
+Istio源码系列1：pilot-agent 源码分析
+Istio源码系列2：citadel 源码分析
+Istio源码系列3：pilot-discovery 源码分析
+Istio源码系列4：mixer 源码分析
+
+
+
+架构
 介绍完整的 yaml 文件参见 pilot-yaml。
 Dockerfile
-12345FROM istionightly/base_debugADD pilot-discovery /usr/local/bin/ADD cacert.pem /cacert.pemENTRYPOINT ["/usr/local/bin/pilot-discovery"]
-启动命令行
-12# ps -ef -www|grep pilot$/usr/local/bin/pilot-discovery discovery
-命令行帮助
-123456789# kubectl exec -ti istio-p...
+12345FROM istionightly/base_debugADD pilot-discovery /usr/local/bin/ADD cacert.pem /cacert.pemENTRYPOINT ["/usr/local/bin/pilot-discovery...
             </div>
             <div class="abstract-post-meta">
                 <!-- date  -->
@@ -335,15 +383,25 @@ Dockerfile
     
     
         <article class="index-post">
-            <a class="abstract-title" href="/2019/02/06/istio-citadel/">
+            <a class="abstract-title" href="/2019/02/06/istio-source-citadel/">
                 
-                    <span>istio citadel 源码分析</span>
+                    <span>Istio源码系列2：citadel 源码分析</span>
             </a>
             <div class="abstract-content">
-                安全整体架构 From: Istio 安全
+                
+本系列链接：
+
+Istio源码系列1：pilot-agent 源码分析
+Istio源码系列2：citadel 源码分析
+Istio源码系列3：pilot-discovery 源码分析
+Istio源码系列4：mixer 源码分析
+
+
+
+安全整体架构 From: Istio 安全
 源码位于 security，编译后名称为 citadel。
 命令行介绍Dockerfile istio.io/istio/security/docker/Dockerfile.citadel
-123456789FROM scratch# obtained from debian ca-certs deb using fetch_cacerts.shADD ca-certificates.tgz /# All containers need a /tmp directoryWORKDIR /tmp/ADD istio_ca /usr/local/...
+123456789FROM scratch# obtained from debian ca-certs deb usin...
             </div>
             <div class="abstract-post-meta">
                 <!-- date  -->
@@ -366,23 +424,26 @@ Dockerfile
     
     
         <article class="index-post">
-            <a class="abstract-title" href="/2019/02/02/istio-pilot-agent/">
+            <a class="abstract-title" href="/2019/02/02/istio-source-pilot-agent/">
                 
-                    <span>istio pilot-agent 源码分析</span>
+                    <span>Istio源码系列1：pilot-agent 源码分析</span>
             </a>
             <div class="abstract-content">
-                本文分析基于 Istio 1.1 版本，但是日志或者流程是基于 1.0.5 版本。
+                
+本系列链接：
+
+Istio源码系列1：pilot-agent 源码分析
+Istio源码系列2：citadel 源码分析
+Istio源码系列3：pilot-discovery 源码分析
+Istio源码系列4：mixer 源码分析
+
+
+
+本文分析基于 Istio 1.1 版本，但是日志或者流程是基于 1.0.5 版本。
 整体架构pilot 的代码仓库位于 pilot repo，当前主要实现了 3 个命令：
 
 pilot-agent 充当 Proxy 节点上与 API-Server 和 proxy 的桥梁，负责生成 envoy 初始配置文件和管理envoy 生命周期；
-pilot-discovery 为  proxy  提供集群地址服务发现服务；
-sidecar-injector 自动注入提供的 Webhook 服务；
-
-
-
-上图为旧版本的结构图，与新版本可能有差异，但是整体架构类似
-
-在 istio-proxy 容器 p...
+pilot-disco...
             </div>
             <div class="abstract-post-meta">
                 <!-- date  -->
@@ -1225,7 +1286,30 @@ ServiceMesh中文网：微服务前方有雷，服务网格帮你趟过通信安
     
     
     
-    <div class="total-archive"> Total : 40 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 41 </div>
     
     <div class="post-archive">
     
@@ -1237,17 +1321,22 @@ ServiceMesh中文网：微服务前方有雷，服务网格帮你趟过通信安
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
         </li>
     
     
@@ -1502,9 +1591,9 @@ ServiceMesh中文网：微服务前方有雷，服务网格帮你趟过通信安
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     

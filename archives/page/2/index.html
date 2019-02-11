@@ -300,6 +300,39 @@
     
     
         <article class="index-post">
+            <a class="abstract-title" href="/2018/09/07/grpc-loadbanlancer/">
+                
+                    <span>gRPC 之 LoadBalancer</span>
+            </a>
+            <div class="abstract-content">
+                基于 Etcd 实现的服务注册和发现的 grpclb 参见： grpclb
+前提gRPC 负载均衡是针对每次请求，而不是连接，这样可以保证服务端负载的均衡性。负载均衡器按照实现侧不同一般分为两种：
+1. Proxy
+2. Client Side   
+Thick Client所有负载均衡算法实现都在客户端。
+Lookaside Load Balancing也称单臂路由。
+
+Etcd Loadbanlacer 实现gPRC 当前最新版本为 Release 1.14.0，由于 Etcd 不同版本的 Banlancer 实现方式不仅相同，可以参考：client-architecture/ Et...
+            </div>
+            <div class="abstract-post-meta">
+                <!-- date  -->
+                <div class="abstract-date">
+                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/09/07</span>
+                </div>
+                <!-- tags  -->
+                
+                <div class="abstract-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="grpc">grpc</a>
+    
+</div>
+                
+            </div>
+        </article>
+    
+    
+    
+        <article class="index-post">
             <a class="abstract-title" href="/2018/09/01/grpc-interceptors/">
                 
                     <span>gRPC 之 Interceptors</span>
@@ -591,37 +624,10 @@ Start upstream serverStar...
             </div>
         </article>
     
-    
-    
-        <article class="index-post">
-            <a class="abstract-title" href="/2018/06/20/JWT/">
-                
-                    <span>JSON Web Token</span>
-            </a>
-            <div class="abstract-content">
-                JSON Web Token (JWT) 介绍定义 RFC7519，对于 JWT Token  的签名和验证，可以使用在线资源 https://jwt.io/，该网站也列出了各种语言层面支持的Libraries。
-12345678910111213141516#base64UrlEncode(header) + "." + base64UrlEncode(payload) + "." + base64UrlEncode(signature)eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ik...
-            </div>
-            <div class="abstract-post-meta">
-                <!-- date  -->
-                <div class="abstract-date">
-                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/06/20</span>
-                </div>
-                <!-- tags  -->
-                
-                <div class="abstract-tags">
-    
-        <a class="post-tag" href="javascript:void(0);" data-tags="jwt">jwt</a>
-    
-</div>
-                
-            </div>
-        </article>
-    
     <!-- paginator  -->
     
     <nav class="page-nav">
-        <a class="extend prev" rel="prev" href="/archives/">&#60; PREV</a><a class="page-number" href="/archives/">1</a><span class="page-number current">2</span><a class="page-number" href="/archives/page/3/">3</a><a class="page-number" href="/archives/page/4/">4</a><a class="extend next" rel="next" href="/archives/page/3/">NEXT &#62;</a>
+        <a class="extend prev" rel="prev" href="/archives/">&#60; PREV</a><a class="page-number" href="/archives/">1</a><span class="page-number current">2</span><a class="page-number" href="/archives/page/3/">3</a><a class="page-number" href="/archives/page/4/">4</a><a class="page-number" href="/archives/page/5/">5</a><a class="extend next" rel="next" href="/archives/page/3/">NEXT &#62;</a>
     </nav>
     
 </main>
@@ -1239,7 +1245,30 @@ Start upstream serverStar...
     
     
     
-    <div class="total-archive"> Total : 40 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 41 </div>
     
     <div class="post-archive">
     
@@ -1251,17 +1280,22 @@ Start upstream serverStar...
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
         </li>
     
     
@@ -1516,9 +1550,9 @@ Start upstream serverStar...
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     

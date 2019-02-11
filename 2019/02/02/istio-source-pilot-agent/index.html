@@ -9,7 +9,7 @@
 <head><meta name="generator" content="Hexo 3.8.0">
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>istio pilot-agent 源码分析 · 程序印象</title>
+    <title>Istio源码系列1：pilot-agent 源码分析 · 程序印象</title>
     <style type="text/css">
     @font-face {
         font-family: 'Oswald-Regular';
@@ -275,7 +275,7 @@
                 <a href="/">程序印象</a>
             </div>
             <div class="post-title">
-                <a href="#" class="post-name">istio pilot-agent 源码分析</a>
+                <a href="#" class="post-name">Istio源码系列1：pilot-agent 源码分析</a>
             </div>
     </div>
     
@@ -296,7 +296,7 @@
         <h1 class="intro-title">
             <!-- 主页  -->
             
-            istio pilot-agent 源码分析
+            Istio源码系列1：pilot-agent 源码分析
             <!-- 404 -->
             
         </h1>
@@ -351,7 +351,17 @@
         <div class="container container-unloaded">
             <main class="main post-page">
     <article class="article-entry">
-        <p>本文分析基于 Istio 1.1 版本，但是日志或者流程是基于 1.0.5 版本。</p>
+        <hr>
+<p><strong>本系列链接：</strong></p>
+<ul>
+<li><a href="/2019/02/02/istio-source-pilot-agent/" title="Istio源码系列1：pilot-agent 源码分析">Istio源码系列1：pilot-agent 源码分析</a></li>
+<li><a href="/2019/02/06/istio-source-citadel/" title="Istio源码系列2：citadel 源码分析">Istio源码系列2：citadel 源码分析</a></li>
+<li><a href="/2019/02/08/istio-source-pilot/" title="Istio源码系列3：pilot-discovery 源码分析">Istio源码系列3：pilot-discovery 源码分析</a></li>
+<li><a href="/2019/02/15/istio-source-mixer/" title="Istio源码系列4：mixer 源码分析">Istio源码系列4：mixer 源码分析</a>
+</li>
+</ul>
+<hr>
+<p>本文分析基于 Istio 1.1 版本，但是日志或者流程是基于 1.0.5 版本。</p>
 <h2 id="整体架构"><a href="#整体架构" class="headerlink" title="整体架构"></a>整体架构</h2><p>pilot 的代码仓库位于 <a href="https://github.com/istio/istio/tree/master/pilot" target="_blank" rel="noopener">pilot repo</a>，当前主要实现了 3 个命令：</p>
 <ol>
 <li><a href="https://github.com/istio/istio/tree/master/pilot/cmd/pilot-agent" target="_blank" rel="noopener">pilot-agent</a> 充当 Proxy 节点上与 API-Server 和 <a href="https://github.com/istio/proxy" target="_blank" rel="noopener">proxy</a> 的桥梁，负责生成 envoy 初始配置文件和管理envoy 生命周期；</li>
@@ -464,6 +474,9 @@
 <h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
 <li><a href="http://www.servicemesher.com/blog/istio-service-mesh-source-code-pilot-agent-deepin/" target="_blank" rel="noopener">istio源码分析之pilot-agent模块分析</a></li>
 </ol>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
 
     </article>
     <!-- 前后页  -->
@@ -471,8 +484,8 @@
         <li class="next">
             
                 <div class="nextSlogan">Next Post</div>
-                <a href="/2019/02/06/istio-citadel/" title="istio" citadel="" 源码分析="">
-                    <div class="nextTitle">istio citadel 源码分析</div>
+                <a href="/2019/02/06/istio-source-citadel/" title="Istio源码系列2：citadel" 源码分析="">
+                    <div class="nextTitle">Istio源码系列2：citadel 源码分析</div>
                 </a>
             
         </li>
@@ -497,8 +510,8 @@
     *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
         
         var disqus_config = function () {
-        this.page.url = "http://www.cn18k.com/2019/02/02/istio-pilot-agent/";  // Replace PAGE_URL with your page's canonical URL variable
-        this.page.identifier = "istio pilot-agent 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        this.page.url = "http://www.cn18k.com/2019/02/02/istio-source-pilot-agent/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Istio源码系列1：pilot-agent 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
         };
         
         (function () { // DON'T EDIT BELOW THIS LINE
@@ -1152,7 +1165,30 @@ top:50vh;
     
     
     
-    <div class="total-archive"> Total : 40 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 41 </div>
     
     <div class="post-archive">
     
@@ -1164,17 +1200,22 @@ top:50vh;
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
         </li>
     
     
@@ -1429,9 +1470,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     

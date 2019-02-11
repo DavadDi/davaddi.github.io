@@ -9,7 +9,7 @@
 <head><meta name="generator" content="Hexo 3.8.0">
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>istio pilot-discovery 源码分析 · 程序印象</title>
+    <title>Istio源码系列3：pilot-discovery 源码分析 · 程序印象</title>
     <style type="text/css">
     @font-face {
         font-family: 'Oswald-Regular';
@@ -275,7 +275,7 @@
                 <a href="/">程序印象</a>
             </div>
             <div class="post-title">
-                <a href="#" class="post-name">istio pilot-discovery 源码分析</a>
+                <a href="#" class="post-name">Istio源码系列3：pilot-discovery 源码分析</a>
             </div>
     </div>
     
@@ -296,7 +296,7 @@
         <h1 class="intro-title">
             <!-- 主页  -->
             
-            istio pilot-discovery 源码分析
+            Istio源码系列3：pilot-discovery 源码分析
             <!-- 404 -->
             
         </h1>
@@ -351,7 +351,17 @@
         <div class="container container-unloaded">
             <main class="main post-page">
     <article class="article-entry">
-        <h2 id="架构"><a href="#架构" class="headerlink" title="架构"></a>架构</h2><p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1ftppyenvgyj30la0fudhb.jpg" alt=""></p>
+        <hr>
+<p><strong>本系列链接：</strong></p>
+<ul>
+<li><a href="/2019/02/02/istio-source-pilot-agent/" title="Istio源码系列1：pilot-agent 源码分析">Istio源码系列1：pilot-agent 源码分析</a></li>
+<li><a href="/2019/02/06/istio-source-citadel/" title="Istio源码系列2：citadel 源码分析">Istio源码系列2：citadel 源码分析</a></li>
+<li><a href="/2019/02/08/istio-source-pilot/" title="Istio源码系列3：pilot-discovery 源码分析">Istio源码系列3：pilot-discovery 源码分析</a></li>
+<li><a href="/2019/02/15/istio-source-mixer/" title="Istio源码系列4：mixer 源码分析">Istio源码系列4：mixer 源码分析</a>
+</li>
+</ul>
+<hr>
+<h2 id="架构"><a href="#架构" class="headerlink" title="架构"></a>架构</h2><p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1ftppyenvgyj30la0fudhb.jpg" alt=""></p>
 <h2 id="介绍"><a href="#介绍" class="headerlink" title="介绍"></a>介绍</h2><p>完整的 yaml 文件参见 <a href="https://gist.github.com/DavadDi/3f515a972f33225cd5828ec47e31efe7" target="_blank" rel="noopener">pilot-yaml</a>。</p>
 <p>Dockerfile</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">FROM istionightly/base_debug</span><br><span class="line"></span><br><span class="line">ADD pilot-discovery /usr/<span class="built_in">local</span>/bin/</span><br><span class="line">ADD cacert.pem /cacert.pem</span><br><span class="line">ENTRYPOINT [<span class="string">"/usr/local/bin/pilot-discovery"</span>]</span><br></pre></td></tr></table></figure>
@@ -503,18 +513,29 @@
 <p>临时的调试方法：</p>
 <p>istio.io/istio/pilot/pkg/proxy/envoy/v2/debug.go</p>
 <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// InitDebug initializes the debug handlers and adds a debug in-memory registry.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">InitDebug</span><span class="params">(mux *http.ServeMux, sctl *aggregate.Controller)</span></span> &#123;</span><br><span class="line">	<span class="comment">// For debugging and load testing v2 we add an memory registry.</span></span><br><span class="line">	s.MemRegistry = NewMemServiceDiscovery(</span><br><span class="line">		<span class="keyword">map</span>[model.Hostname]*model.Service&#123; <span class="comment">// mock.HelloService.Hostname: mock.HelloService,</span></span><br><span class="line">		&#125;, <span class="number">2</span>)</span><br><span class="line">	s.MemRegistry.EDSUpdater = s</span><br><span class="line">	s.MemRegistry.ClusterID = <span class="string">"v2-debug"</span></span><br><span class="line"></span><br><span class="line">	sctl.AddRegistry(aggregate.Registry&#123;</span><br><span class="line">		ClusterID:        <span class="string">"v2-debug"</span>,</span><br><span class="line">		Name:             serviceregistry.ServiceRegistry(<span class="string">"memAdapter"</span>),</span><br><span class="line">		ServiceDiscovery: s.MemRegistry,</span><br><span class="line">		ServiceAccounts:  s.MemRegistry,</span><br><span class="line">		Controller:       s.MemRegistry.controller,</span><br><span class="line">	&#125;)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/ready"</span>, s.ready)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/edsz"</span>, s.edsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/adsz"</span>, s.adsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/cdsz"</span>, cdsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/syncz"</span>, Syncz)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/registryz"</span>, s.registryz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/endpointz"</span>, s.endpointz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/endpointShardz"</span>, s.endpointShardz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/workloadz"</span>, s.workloadz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/configz"</span>, s.configz)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/authenticationz"</span>, s.authenticationz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/config_dump"</span>, s.ConfigDump)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/push_status"</span>, s.PushStatusHandler)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://zhaohuabing.com/istio-practice/content/debug-istio/%E5%8D%8F%E8%AE%AE%E5%B1%82%E8%B0%83%E8%AF%95%E4%BF%A1%E6%81%AF.html" target="_blank" rel="noopener">debug-istio</a></li>
+</ol>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
 
     </article>
     <!-- 前后页  -->
     <ul class="post-paginator">
         <li class="next">
             
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2019/02/15/istio-source-mixer/" title="Istio源码系列4：mixer" 源码分析="">
+                    <div class="nextTitle">Istio源码系列4：mixer 源码分析</div>
+                </a>
+            
         </li>
         <li class="previous">
             
                 <div class="prevSlogan">Previous Post</div>
-                <a href="/2019/02/06/istio-citadel/" title="istio" citadel="" 源码分析="">
-                    <div class="prevTitle">istio citadel 源码分析</div>
+                <a href="/2019/02/06/istio-source-citadel/" title="Istio源码系列2：citadel" 源码分析="">
+                    <div class="prevTitle">Istio源码系列2：citadel 源码分析</div>
                 </a>
             
         </li>
@@ -531,8 +552,8 @@
     *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
         
         var disqus_config = function () {
-        this.page.url = "http://www.cn18k.com/2019/02/08/istio-pilot/";  // Replace PAGE_URL with your page's canonical URL variable
-        this.page.identifier = "istio pilot-discovery 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        this.page.url = "http://www.cn18k.com/2019/02/08/istio-source-pilot/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Istio源码系列3：pilot-discovery 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
         };
         
         (function () { // DON'T EDIT BELOW THIS LINE
@@ -649,7 +670,7 @@ top:50vh;
         <div class="toc-catalog">
             <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
         </div>
-        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#架构"><span class="toc-number">1.</span> <span class="toc-text">架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#介绍"><span class="toc-number">2.</span> <span class="toc-text">介绍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#代码分析"><span class="toc-number">3.</span> <span class="toc-text">代码分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#ConfigController"><span class="toc-number">3.1.</span> <span class="toc-text">ConfigController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceController"><span class="toc-number">3.2.</span> <span class="toc-text">ServiceController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceDiscovery"><span class="toc-number">3.3.</span> <span class="toc-text">ServiceDiscovery</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#core-Node"><span class="toc-number">3.3.1.</span> <span class="toc-text">core.Node</span></a></li></ol></li></ol></li></ol>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#架构"><span class="toc-number">1.</span> <span class="toc-text">架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#介绍"><span class="toc-number">2.</span> <span class="toc-text">介绍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#代码分析"><span class="toc-number">3.</span> <span class="toc-text">代码分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#ConfigController"><span class="toc-number">3.1.</span> <span class="toc-text">ConfigController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceController"><span class="toc-number">3.2.</span> <span class="toc-text">ServiceController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceDiscovery"><span class="toc-number">3.3.</span> <span class="toc-text">ServiceDiscovery</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#core-Node"><span class="toc-number">3.3.1.</span> <span class="toc-text">core.Node</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">4.</span> <span class="toc-text">参考</span></a></li></ol>
     </div>
     
     <div class="back-top iconfont-archer">&#xe639;</div>
@@ -1186,7 +1207,30 @@ top:50vh;
     
     
     
-    <div class="total-archive"> Total : 40 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 41 </div>
     
     <div class="post-archive">
     
@@ -1198,17 +1242,22 @@ top:50vh;
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
         </li>
     
     
@@ -1463,9 +1512,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     

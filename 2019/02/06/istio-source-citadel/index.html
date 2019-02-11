@@ -9,7 +9,7 @@
 <head><meta name="generator" content="Hexo 3.8.0">
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>istio citadel 源码分析 · 程序印象</title>
+    <title>Istio源码系列2：citadel 源码分析 · 程序印象</title>
     <style type="text/css">
     @font-face {
         font-family: 'Oswald-Regular';
@@ -275,7 +275,7 @@
                 <a href="/">程序印象</a>
             </div>
             <div class="post-title">
-                <a href="#" class="post-name">istio citadel 源码分析</a>
+                <a href="#" class="post-name">Istio源码系列2：citadel 源码分析</a>
             </div>
     </div>
     
@@ -296,7 +296,7 @@
         <h1 class="intro-title">
             <!-- 主页  -->
             
-            istio citadel 源码分析
+            Istio源码系列2：citadel 源码分析
             <!-- 404 -->
             
         </h1>
@@ -351,7 +351,17 @@
         <div class="container container-unloaded">
             <main class="main post-page">
     <article class="article-entry">
-        <h2 id="安全整体架构"><a href="#安全整体架构" class="headerlink" title="安全整体架构"></a>安全整体架构</h2><p><img src="https://istio.io/docs/concepts/security/architecture.svg" alt=""> From: <a href="https://istio.io/zh/docs/concepts/security/" target="_blank" rel="noopener">Istio 安全</a></p>
+        <hr>
+<p><strong>本系列链接：</strong></p>
+<ul>
+<li><a href="/2019/02/02/istio-source-pilot-agent/" title="Istio源码系列1：pilot-agent 源码分析">Istio源码系列1：pilot-agent 源码分析</a></li>
+<li><a href="/2019/02/06/istio-source-citadel/" title="Istio源码系列2：citadel 源码分析">Istio源码系列2：citadel 源码分析</a></li>
+<li><a href="/2019/02/08/istio-source-pilot/" title="Istio源码系列3：pilot-discovery 源码分析">Istio源码系列3：pilot-discovery 源码分析</a></li>
+<li><a href="/2019/02/15/istio-source-mixer/" title="Istio源码系列4：mixer 源码分析">Istio源码系列4：mixer 源码分析</a>
+</li>
+</ul>
+<hr>
+<h2 id="安全整体架构"><a href="#安全整体架构" class="headerlink" title="安全整体架构"></a>安全整体架构</h2><p><img src="https://istio.io/docs/concepts/security/architecture.svg" alt=""> From: <a href="https://istio.io/zh/docs/concepts/security/" target="_blank" rel="noopener">Istio 安全</a></p>
 <p>源码位于 <a href="https://github.com/istio/istio/tree/master/security" target="_blank" rel="noopener">security</a>，编译后名称为 citadel。</p>
 <h2 id="命令行介绍"><a href="#命令行介绍" class="headerlink" title="命令行介绍"></a>命令行介绍</h2><p>Dockerfile istio.io/istio/security/docker/Dockerfile.citadel</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">FROM scratch</span><br><span class="line"></span><br><span class="line"><span class="comment"># obtained from debian ca-certs deb using fetch_cacerts.sh</span></span><br><span class="line">ADD ca-certificates.tgz /</span><br><span class="line"><span class="comment"># All containers need a /tmp directory</span></span><br><span class="line">WORKDIR /tmp/</span><br><span class="line">ADD istio_ca /usr/<span class="built_in">local</span>/bin/istio_ca</span><br><span class="line"></span><br><span class="line">ENTRYPOINT [ <span class="string">"/usr/local/bin/istio_ca"</span>, <span class="string">"--self-signed-ca"</span> ]</span><br></pre></td></tr></table></figure>
@@ -402,6 +412,9 @@
 <p>istio.io/istio/security/pkg/caclient/keycertbundlerotator.go</p>
 <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Start periodically rotates the KeyCertBundle by interacting with the upstream CA.</span></span><br><span class="line"><span class="comment">// It is a blocking function that should run as a go routine. Thread safe.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *KeyCertBundleRotator)</span> <span class="title">Start</span><span class="params">(errCh <span class="keyword">chan</span>&lt;- error)</span></span> &#123;</span><br><span class="line">	c.stoppedMutex.Lock()</span><br><span class="line">	<span class="keyword">if</span> !c.stopped &#123;</span><br><span class="line">		errCh &lt;- fmt.Errorf(<span class="string">"rotator already started"</span>)</span><br><span class="line">		c.stoppedMutex.Unlock()</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line">	c.stopped = <span class="literal">false</span></span><br><span class="line">	c.stoppedMutex.Unlock()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Make sure we mark rotator stopped after this method finishes.</span></span><br><span class="line">	<span class="keyword">defer</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		c.stoppedMutex.Lock()</span><br><span class="line">		c.stopped = <span class="literal">true</span></span><br><span class="line">		c.stoppedMutex.Unlock()</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		certBytes, _, _, _ := c.keycert.GetAllPem()</span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">len</span>(certBytes) != <span class="number">0</span> &#123;</span><br><span class="line">			waitTime, ttlErr := c.certUtil.GetWaitTime(certBytes, time.Now())</span><br><span class="line">			<span class="keyword">if</span> ttlErr != <span class="literal">nil</span> &#123;</span><br><span class="line">				log.Errorf(<span class="string">"Error getting TTL from cert: %v. Rotate immediately."</span>, ttlErr)</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				timer := time.NewTimer(waitTime)</span><br><span class="line">				log.Infof(<span class="string">"Will rotate key and cert in %v."</span>, waitTime)</span><br><span class="line">				<span class="keyword">select</span> &#123;</span><br><span class="line">				<span class="keyword">case</span> &lt;-c.stopCh:</span><br><span class="line">					<span class="keyword">return</span></span><br><span class="line">				<span class="keyword">case</span> &lt;-timer.C:</span><br><span class="line">					<span class="comment">// Continue in the loop.</span></span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		co, coErr := c.keycert.CertOptions()</span><br><span class="line">		<span class="keyword">if</span> coErr != <span class="literal">nil</span> &#123;</span><br><span class="line">			err := fmt.Errorf(<span class="string">"failed to extact CertOptions from bundle: %v, abort auto rotation"</span>, coErr)</span><br><span class="line">			log.Errora(err)</span><br><span class="line">			errCh &lt;- err</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">		certBytes, certChainBytes, privKeyBytes, rErr := c.retriever.Retrieve(co)</span><br><span class="line">		<span class="keyword">if</span> rErr != <span class="literal">nil</span> &#123;</span><br><span class="line">			err := fmt.Errorf(<span class="string">"error retrieving the key and cert: %v, abort auto rotation"</span>, rErr)</span><br><span class="line">			log.Errora(err)</span><br><span class="line">			errCh &lt;- err</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">		_, _, _, rootCertBytes := c.keycert.GetAllPem()</span><br><span class="line">		<span class="keyword">if</span> vErr := c.keycert.VerifyAndSetAll(certBytes, privKeyBytes, certChainBytes, rootCertBytes); vErr != <span class="literal">nil</span> &#123;</span><br><span class="line">			err := fmt.Errorf(<span class="string">"cannot verify the retrieved key and cert: %v, abort auto rotation"</span>, vErr)</span><br><span class="line">			log.Errora(err)</span><br><span class="line">			errCh &lt;- err</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">		log.Infof(<span class="string">"Successfully retrieved new key and certs."</span>)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>TODO: istio-security-post-install 和 istio-cleanup-secrets Job 作用</p>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
 
     </article>
     <!-- 前后页  -->
@@ -409,16 +422,16 @@
         <li class="next">
             
                 <div class="nextSlogan">Next Post</div>
-                <a href="/2019/02/08/istio-pilot/" title="istio" pilot-discovery="" 源码分析="">
-                    <div class="nextTitle">istio pilot-discovery 源码分析</div>
+                <a href="/2019/02/08/istio-source-pilot/" title="Istio源码系列3：pilot-discovery" 源码分析="">
+                    <div class="nextTitle">Istio源码系列3：pilot-discovery 源码分析</div>
                 </a>
             
         </li>
         <li class="previous">
             
                 <div class="prevSlogan">Previous Post</div>
-                <a href="/2019/02/02/istio-pilot-agent/" title="istio" pilot-agent="" 源码分析="">
-                    <div class="prevTitle">istio pilot-agent 源码分析</div>
+                <a href="/2019/02/02/istio-source-pilot-agent/" title="Istio源码系列1：pilot-agent" 源码分析="">
+                    <div class="prevTitle">Istio源码系列1：pilot-agent 源码分析</div>
                 </a>
             
         </li>
@@ -435,8 +448,8 @@
     *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
         
         var disqus_config = function () {
-        this.page.url = "http://www.cn18k.com/2019/02/06/istio-citadel/";  // Replace PAGE_URL with your page's canonical URL variable
-        this.page.identifier = "istio citadel 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        this.page.url = "http://www.cn18k.com/2019/02/06/istio-source-citadel/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Istio源码系列2：citadel 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
         };
         
         (function () { // DON'T EDIT BELOW THIS LINE
@@ -1090,7 +1103,30 @@ top:50vh;
     
     
     
-    <div class="total-archive"> Total : 40 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 41 </div>
     
     <div class="post-archive">
     
@@ -1102,17 +1138,22 @@ top:50vh;
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
         </li>
     
     
         <li class="archive-post-item">
-            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
         </li>
     
     
@@ -1367,9 +1408,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     
