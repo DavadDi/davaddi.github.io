@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kubernets深入系列： API Server - part 3a（译） · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Kubernets深入系列： API Server - part 3a（译）</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Kubernets深入系列： API Server - part 3a（译）
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="api-server">api-server</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/04/07</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>作者：<a href="https://blog.openshift.com/author/schimanskihausenblas/" target="_blank" rel="noopener">STEFAN SCHIMANSKI AND MICHAEL HAUSENBLAS</a> AUGUST 15, 2017</p>
+<p>翻译：狄卫华</p>
+<p>原文：Kubernetes deep dive: API Server – part 3a</p>
+<p>原文链接：<a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-3a/" target="_blank" rel="noopener">https://blog.openshift.com/kubernetes-deep-dive-api-server-part-3a/</a></p>
+<hr>
+<p><strong>本系列翻译链接：</strong></p>
+<ul>
+<li><a href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/" title="Kubernetes深入系列：API Server-Part 1">Kubernetes深入系列：API Server-Part 1</a></li>
+<li><a href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/" title="Kubernetes深入系列：API Server-Part 2">Kubernetes深入系列：API Server-Part 2</a></li>
+<li><a href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/" title="Kubernetes深入系列：API Server-Part 3a">Kubernetes深入系列：API Server-Part 3a</a></li>
+<li><a href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/" title="Kubernetes深入系列：为自定义资源生成代码">Kubernetes深入系列：为自定义资源生成代码</a>
+</li>
+</ul>
+<hr>
+<p>在本系列的前两部分中，我们回顾了API Server 中的一般流程以及如何使用 etcd 管理对象状态。 现在我们正在讨论如何扩展核心 API。</p>
+<p>最初，扩展 API Server 的唯一方法是 Fork 和 Patch  <a href="https://github.com/kubernetes/kubernetes/tree/master/cmd/kube-apiserver" target="_blank" rel="noopener">kube-apiserver</a>  源代码并集成自己的资源。 或者可以尝试游说将新类型放入上游核心对象集合中。 但是这导致了一个问题：核心 API 将随着时间的推移而增长，可能导致 API 变得臃肿。 为了不让核心 API 变得太笨重，项目提出了两种扩展核心的方法：</p>
+<ol>
+<li>使用的自定义资源定义（CRD），此前被称做第三方资源（TPR）。 通过这些 CRD，您可以轻松而灵活地定义自己的对象类型，并让 API 服务器处理整个生命周期。</li>
+<li>使用与主 API Server 并行运行的用户 API Server（UAS）。 虽然涉及更多的先期投入与研发工作，但可以达到更细粒度控制对象行为。</li>
+</ol>
+<p>此外，在扩展的上下文中，我们将讨论对象生命周期（从初始化到入场到终结）。 我们将在两篇文章中介绍 CRD的主题，因为它相当复杂（elaborate），我们正在处理 1.7 到 1.8 版本中的迁移工作。 在这篇文章中，我们关注 CRD，第二部分我们将向您展示如何为它编写自定义控制器，包括使用 kube-gen 生成代码。</p>
+<h2 id="声明和创建-CRD"><a href="#声明和创建-CRD" class="headerlink" title="声明和创建 CRD"></a>声明和创建 CRD</h2><p>正如我们在<a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-1/" target="_blank" rel="noopener">第1部分</a>中讨论的那样，资源按 API Groups 分组，每个版本都有相应的 HTTP 路径。 现在，如果您要实现 CRD，首先要命名一个不能与现有核心组重叠的新 API Group。 在您自己的 API Group 中，您可以拥有尽可能多的资源，并且可以使用与其他组中可能存在的名称相同的名称。 我们来看一个具体的例子：</p>
+<p><img src="https://blog.openshift.com/wp-content/uploads/CRD-yaml-example-1024x637.png" alt="img"></p>
+<p>我们区分 CRD 与自定义资源 CR，CRD 就像面向对象编程中的类定义，而 CR 则可以看做是对应的类实例。 首先我们看一下类定义：在上面的第 1 行中，您会看到在 CRD 中必须使用 <code>apiVersion</code> ; kube-apiserver 1.7 和更高版本都支持该功能。 在第 5 行及以下，您使用 <code>spec</code> 字段来定义： </p>
+<ul>
+<li>第 6 行：CRD API 组（在我们的案例中，一个好的做法是使用组织的完整域名，如 example.com。</li>
+<li>第 7 行：CRD 对象的版本。 每个资源只有一个版本，但 API Group 中可能有多个版本不同的资源。</li>
+</ul>
+<p><code>spec.names</code> 字段有两个必需的子项：</p>
+<ul>
+<li>第 9 行 <code>Kind</code>按照惯例是大写单数（<code>Database</code>）</li>
+<li>第 10 行：<code>plural</code>，按照惯例是小写复数（这里是 <code>databases</code>）。 您可以使用有趣的命名字段 <code>plural</code> 来定义资源HTTP路径，我们的示例为：<code>https://&lt;server/apis/example.com/v1/namespaces/default/databases</code>。 还有一个可选的 <code>singular</code> 字段，默认为小写的类型值，可以在 kubectl 的上下文中使用。</li>
+</ul>
+<p>此外，<code>spec.names</code>  还有许多可选字段，由 API Server 自动派生和填充。</p>
+<p>请记住从第1部分可以看出，该类型描述了对象的类型，而资源则对应于 HTTP 路径。 大多数时候，这两个一致; 但在某些情况下，API Server 可能会在相同的 API HTTP 路径上返回不同的类型（例如：<code>Status</code> 错误对象明显是另一种类型）。</p>
+<p>需注意资源名称（示例中的 <code>database</code>）和组（example.com）必须匹配元数据字段 <code>name</code>（请参见上面的第4 行）。</p>
+<p>现在我们可以基于上述 YAML 规范创建 CRD：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl create -f databases-crd.yaml</span><br><span class="line">customresourcedefinition <span class="string">"databases.example.com"</span> created</span><br></pre></td></tr></table></figure>
+<p>需注意，创建过程是异步过程，这意味着您必须检查 CRD 状态以显示检查指定的名称是否已被接受（即与其他资源没有名称冲突），并且 API Server 已经建立了要处理的 API 处理程序添加了新的资源。 在脚本或代码中，轮询是处理这种情况比较好的方式。</p>
+<p>最终，我们得到这个：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl get crd databases.example.com -o yaml</span><br><span class="line">apiVersion: apiextensions.k8s.io/v1beta1</span><br><span class="line">kind: CustomResourceDefinition</span><br><span class="line">metadata:</span><br><span class="line">  creationTimestamp: 2017-08-09T09:21:43Z</span><br><span class="line">  name: databases.example.com</span><br><span class="line">  resourceVersion: <span class="string">"792"</span></span><br><span class="line">  selfLink: /apis/apiextensions.k8s.io/v1beta1/customresourcedefinitions/databases.example.com</span><br><span class="line">  uid: 28c94a05-7ce4-11e7-888c-42010a9a0fd5</span><br><span class="line">spec:</span><br><span class="line">  group: example.com</span><br><span class="line">  names:</span><br><span class="line">    kind: Database</span><br><span class="line">    listKind: DatabaseList</span><br><span class="line">    plural: databases</span><br><span class="line">    singular: database</span><br><span class="line">  scope: Namespaced</span><br><span class="line">  version: v1</span><br><span class="line">status:</span><br><span class="line">  acceptedNames:</span><br><span class="line">    kind: Database</span><br><span class="line">    listKind: DatabaseList</span><br><span class="line">    plural: databases</span><br><span class="line">    singular: database</span><br><span class="line">  conditions:</span><br><span class="line">  - lastTransitionTime: null</span><br><span class="line">    message: no conflicts found</span><br><span class="line">    reason: NoConflicts</span><br><span class="line">    status: <span class="string">"True"</span></span><br><span class="line">    <span class="built_in">type</span>: NamesAccepted</span><br><span class="line">  - lastTransitionTime: 2017-08-09T09:21:43Z</span><br><span class="line">    message: the initial names have been accepted</span><br><span class="line">    reason: InitialNamesAccepted</span><br><span class="line">    status: <span class="string">"True"</span></span><br><span class="line">    <span class="built_in">type</span>: Established</span><br></pre></td></tr></table></figure>
+<p>在上面，你可以看到 <code>kubectl</code>已经获取到了我们之前定义的 CRD 并且能够提供关于它的状态信息；所有的名字都被接受而没有冲突，并且 CRD 已经被创建，也就是说，API Server 现在就提供对于该 CRD 的服务。</p>
+<h2 id="发现和使用CRD"><a href="#发现和使用CRD" class="headerlink" title="发现和使用CRD"></a>发现和使用CRD</h2><p>在使用 <code>kubectl proxy</code> 在本地代理 Kubernetes API 后，我们可以发现我们在上一步中定义的数据库 CRD ，如下所示：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">$ http 127.0.0.1:8001/apis/example.com</span><br><span class="line">HTTP/1.1 200 OK</span><br><span class="line">Content-Length: 223</span><br><span class="line">Content-Type: application/json</span><br><span class="line">Date: Wed, 09 Aug 2017 09:25:44 GMT</span><br><span class="line"></span><br><span class="line">&#123;</span><br><span class="line">    <span class="string">"apiVersion"</span>: <span class="string">"v1"</span>,</span><br><span class="line">    <span class="string">"kind"</span>: <span class="string">"APIGroup"</span>,</span><br><span class="line">    <span class="string">"name"</span>: <span class="string">"example.com"</span>,</span><br><span class="line">    <span class="string">"preferredVersion"</span>: &#123;</span><br><span class="line">        <span class="string">"groupVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">        <span class="string">"version"</span>: <span class="string">"v1"</span></span><br><span class="line">    &#125;,</span><br><span class="line">    <span class="string">"serverAddressByClientCIDRs"</span>: null,</span><br><span class="line">    <span class="string">"versions"</span>: [</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">"groupVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">            <span class="string">"version"</span>: <span class="string">"v1"</span></span><br><span class="line">        &#125;</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>请注意，<code>kubectl</code> 使用 <code>〜/.kube/cache/discovery</code> 目录默认缓存 10分钟内发现内容。 另外，<code>kubectl</code> 最多可能需要10分钟才能看到新的资源，例如我们定义的 CRD。 但是在高速缓存未命中时–也就是说，当 <code>kubectl</code>无法在命令中识别资源名称时—将立即被重新发现。</p>
+<p>接下来，我们要使用 CRD 的一个实例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">$ cat wordpress-database.yaml</span><br><span class="line">apiVersion: example.com/v1</span><br><span class="line">kind:       Database</span><br><span class="line">metadata:</span><br><span class="line">  name:     wordpress</span><br><span class="line">spec:</span><br><span class="line">  user:     wp</span><br><span class="line">  password: secret</span><br><span class="line">  encoding: unicode</span><br><span class="line"></span><br><span class="line">$ kubectl create -f wordpress-databases.yaml</span><br><span class="line">database <span class="string">"wordpress"</span> created</span><br><span class="line"></span><br><span class="line">$ kubectl get databases.example.com</span><br><span class="line">NAME        KIND</span><br><span class="line">wordpress   Database.v1.example.com</span><br></pre></td></tr></table></figure>
+<p>要通过 API 直接监控资源创建和更新，您可以在某个 <code>resourceVersion</code> 上使用 <code>watch</code> 操作 （如<a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-2/" target="_blank" rel="noopener">第2部分</a>所述）。首先，我们将查找定义的 <code>Database</code> CRD 的 <code>resourceVersion</code>，然后使用 <code>curl</code> 观察对该资源在单独的 shell 会话中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">$ http 127.0.0.1:8001/apis/example.com/v1/namespaces/default/databases</span><br><span class="line">HTTP/1.1 200 OK</span><br><span class="line">Content-Length: 593</span><br><span class="line">Content-Type: application/json</span><br><span class="line">Date: Wed, 09 Aug 2017 09:38:49 GMT</span><br><span class="line"></span><br><span class="line">&#123;</span><br><span class="line">    <span class="string">"apiVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">    <span class="string">"items"</span>: [</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">"apiVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">            <span class="string">"kind"</span>: <span class="string">"Database"</span>,</span><br><span class="line">            <span class="string">"metadata"</span>: &#123;</span><br><span class="line">                <span class="string">"clusterName"</span>: <span class="string">""</span>,</span><br><span class="line">                <span class="string">"creationTimestamp"</span>: <span class="string">"2017-08-09T09:38:30Z"</span>,</span><br><span class="line">                <span class="string">"deletionGracePeriodSeconds"</span>: null,</span><br><span class="line">                <span class="string">"deletionTimestamp"</span>: null,</span><br><span class="line">                <span class="string">"name"</span>: <span class="string">"wordpress"</span>,</span><br><span class="line">                <span class="string">"namespace"</span>: <span class="string">"default"</span>,</span><br><span class="line">                <span class="string">"resourceVersion"</span>: <span class="string">"2154"</span>,</span><br><span class="line">                <span class="string">"selfLink"</span>: <span class="string">"/apis/example.com/v1/namespaces/default/databases/wordpress"</span>,</span><br><span class="line">                <span class="string">"uid"</span>: <span class="string">"8101a7af-7ce6-11e7-888c-42010a9a0fd5"</span></span><br><span class="line">            &#125;,</span><br><span class="line">            <span class="string">"spec"</span>: &#123;</span><br><span class="line">                <span class="string">"encoding"</span>: <span class="string">"unicode"</span>,</span><br><span class="line">                <span class="string">"password"</span>: <span class="string">"secret"</span>,</span><br><span class="line">                <span class="string">"user"</span>: <span class="string">"wp"</span></span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    ],</span><br><span class="line">    <span class="string">"kind"</span>: <span class="string">"DatabaseList"</span>,</span><br><span class="line">    <span class="string">"metadata"</span>: &#123;</span><br><span class="line">        <span class="string">"resourceVersion"</span>: <span class="string">"2179"</span>,</span><br><span class="line">        <span class="string">"selfLink"</span>: <span class="string">"/apis/example.com/v1/namespaces/default/databases"</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>所以在这里我们发现我们的 CRD 资源 <code>/apis/example.com/v1/namespaces/default/databases/wordpress</code> 实际数值 <code>“resourceVersion&quot; : &quot;2154&quot;</code> ，这将用于带 <code>curl</code> 的 <code>Watch</code> 的操作中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ curl -f 127.0.0.1:8001/apis/example.com/v1/namespaces/default/databases?watch=<span class="literal">true</span>&amp;resourceVersion=2154</span><br></pre></td></tr></table></figure>
+<p>现在我们打开一个新的 shell 会话并删除 <code>wordpress</code> CRD 资源; 我们可以在原始会话中看到 <code>watch</code> 的通知：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl delete databases.example.com/wordpress</span><br></pre></td></tr></table></figure>
+<p>注意：我们也可以使用 <code>kubectl delete database wordpress</code>，因为 Kubernetes 中没有预定义的 <code>database</code> 资源。 此外，单数字 <code>database</code>是我们 CRD 中的 <code>spec.name.singular</code> 字段，它自动根据英语语法派生。</p>
+<p>在原始会话中，您启动了<code>curl</code> <code>watch</code>命令，现在可以从 API Server 看到实时更新：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&#123;<span class="string">"type"</span>:<span class="string">"DELETED"</span>,<span class="string">"object"</span>:&#123;<span class="string">"apiVersion"</span>:<span class="string">"example.com/v1"</span>,<span class="string">"kind"</span>:<span class="string">"Database"</span>,<span class="string">"metadata"</span>:&#123;<span class="string">"clusterName"</span>:<span class="string">""</span>,<span class="string">"creationTimestamp"</span>:<span class="string">"2017-0[0/515]</span></span><br><span class="line"><span class="string">:38:30Z"</span>,<span class="string">"deletionGracePeriodSeconds"</span>:null,<span class="string">"deletionTimestamp"</span>:null,<span class="string">"name"</span>:<span class="string">"wordpress"</span>,<span class="string">"namespace"</span>:<span class="string">"default"</span>,<span class="string">"resourceVersion"</span>:<span class="string">"2154"</span>,<span class="string">"selfLink"</span>:<span class="string">"/apis/example.com/v1/namespaces/</span></span><br><span class="line"><span class="string">default/databases/wordpress"</span>,<span class="string">"uid"</span>:<span class="string">"8101a7af-7ce6-11e7-888c-42010a9a0fd5"</span>&#125;,<span class="string">"spec"</span>:&#123;<span class="string">"encoding"</span>:<span class="string">"unicode"</span>,<span class="string">"password"</span>:<span class="string">"secret"</span>,<span class="string">"user"</span>:<span class="string">"wp"</span>&#125;&#125;&#125;</span><br></pre></td></tr></table></figure>
+<p>综合起来，使用三个 shell 会话（底部的初始<code>kube proxy</code> 命令的附加命令），上面的命令和相应的输出如下所示：</p>
+<p><img src="https://blog.openshift.com/wp-content/uploads/CRD-wp-state-change-screenshot.png" alt="img"></p>
+<p>最后，让我们看看 <code>database</code> CRD的各个数据在 etcd 中如何存储的。 在下面我们直接通过 HTTP API 访问主节点上的 etcd：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ curl -s localhost:2379/v2/keys/registry/example.com/databases/default | jq .</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"action"</span>: <span class="string">"get"</span>,</span><br><span class="line">  <span class="string">"node"</span>: &#123;</span><br><span class="line">    <span class="string">"key"</span>: <span class="string">"/registry/example.com/databases/default"</span>,</span><br><span class="line">    <span class="string">"dir"</span>: <span class="literal">true</span>,</span><br><span class="line">    <span class="string">"nodes"</span>: [</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="string">"key"</span>: <span class="string">"/registry/example.com/databases/default/wordpress"</span>,</span><br><span class="line">        <span class="string">"value"</span>: <span class="string">"&#123;\"apiVersion\":\"example.com/v1\",\"kind\":\"Database\",\"metadata\":&#123;\"clusterName\":\"\",\"creationTimestamp\":\"2017-08-09T14:53:40Z\",\"deletionGracePeriodSeconds\":null,\"deletionTimestamp\":null,\"name\":\"wordpress\",\"namespace\":\"default\",\"selfLink\":\"\",\"uid\":\"8837f788-7d12-11e7-9d28-080027390640\"&#125;,\"spec\":&#123;\"encoding\":\"unicode\",\"password\":\"secret\",\"user\":\"wp\"&#125;&#125;\n"</span>,</span><br><span class="line">        <span class="string">"modifiedIndex"</span>: 670,</span><br><span class="line">        <span class="string">"createdIndex"</span>: 670</span><br><span class="line">      &#125;</span><br><span class="line">    ],</span><br><span class="line">    <span class="string">"modifiedIndex"</span>: 670,</span><br><span class="line">    <span class="string">"createdIndex"</span>: 670</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从上面的 etcd 资源转储中可以看到，CRD 数据本质上是一个未解析的 blob。</p>
+<p>请注意，删除 CRD 时所有实例也将被删除，即它是级联删除操作。</p>
+<h2 id="CRD的现状、限制、未来"><a href="#CRD的现状、限制、未来" class="headerlink" title="CRD的现状、限制、未来"></a>CRD的现状、限制、未来</h2><p>目前，我们有 Kubernetes 1.7 作为稳定版本，预计2017 年 10 月初 1.8 版本发布。当前 CRD 的状态如下：</p>
+<ul>
+<li>CRD 开始取代 Kubernetes 1.7 中 <code>ThirdPartyResources</code>（TPRs），而 <code>TPRs</code> 将在 Kubernetes 1.8 中取消。</li>
+<li>TPR 到 CRD 可以进行<a href="https://kubernetes.io/docs/tasks/access-kubernetes-api/migrate-third-party-resource/" target="_blank" rel="noopener">简单</a>迁移。</li>
+<li>每个 CRD 支持单个版本，但是每个组可能有多个版本。</li>
+<li>CRD 提供了一致的 API，并且从用户的角度来看与本地资源基本上没有区别。</li>
+<li>CRD 在后续版本中更多功能的稳定基础功能，例如：<ul>
+<li>要使用 JSON-Schema 进行验证，可以查看 <a href="https://github.com/kubernetes/community/pull/708" target="_blank" rel="noopener">CRD 验证提议</a></li>
+<li><a href="https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/" target="_blank" rel="noopener">1.8 中的垃圾收集</a></li>
+</ul>
+</li>
+</ul>
+<p>现在您已经看到了如何使用 CRD，接下来我们将讨论其局限性：</p>
+<ul>
+<li>它们不提供版本转换功能，也就是说，每个 CRD 只能有一个版本（预计不会在近期或中期看到转换支持）。</li>
+<li>目前没有验证，但可能会在 1.8 版本中出现，请参阅 <a href="https://summerofcode.withgoogle.com/projects/#5982049109278720" target="_blank" rel="noopener">Google Summer of Code</a> 项目。并且使用即将推出的JSON 模式（不是图灵完备）有限的验证能力。</li>
+<li>没有快速的进程内入场可能（但支持初始化和入场的webhooks）</li>
+<li>您无法定义子资源，例如 <code>scale</code> 或 <code>status</code>，但有一个正在进行中的 <a href="https://github.com/kubernetes/community/pull/913" target="_blank" rel="noopener">proposal</a>。</li>
+<li>最后但并非最不重要的是，CRD 目前不支持默认值，即将默认值分配给某些字段（这可能出现在后续某一个版本中）。</li>
+</ul>
+<p>为了解决上述问题并以更灵活的方式扩展 Kubernetes，您可以使用与主 API Server 并行运行的 用户 API Server（UAS）。我们将在本博客文章系列的下一篇文章中详细介绍如何编写 UAS。下次我们将通过为其编写自定义控制器来完成 CRD。</p>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/04/11/Introducing-Operators/" title="Operators" 介绍（译）="">
+                    <div class="nextTitle">Operators 介绍（译）</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/" title="Kubernets深入系列：" api="" server="" -="" part="" 2（译）="">
+                    <div class="prevTitle">Kubernets深入系列： API Server - part 2（译）</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Kubernets深入系列： API Server - part 3a（译）"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#声明和创建-CRD"><span class="toc-number">1.</span> <span class="toc-text">声明和创建 CRD</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#发现和使用CRD"><span class="toc-number">2.</span> <span class="toc-text">发现和使用CRD</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CRD的现状、限制、未来"><span class="toc-number">3.</span> <span class="toc-text">CRD的现状、限制、未来</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

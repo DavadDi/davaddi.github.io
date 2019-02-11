@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lets Encrypt = Free 100% HTTPS · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Lets Encrypt = Free 100% HTTPS</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Lets Encrypt = Free 100% HTTPS
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="LetsEncrypt">LetsEncrypt</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="Certbot">Certbot</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="HTTPS">HTTPS</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/03/20</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h1 id="Lets-Encrypt-Free-100-HTTPS"><a href="#Lets-Encrypt-Free-100-HTTPS" class="headerlink" title="Lets Encrypt = Free 100% HTTPS"></a>Lets Encrypt = Free 100% HTTPS</h1><p><a href="https://en.wikipedia.org/wiki/Let%27s_Encrypt" target="_blank" rel="noopener">Let’s Encryptis</a> a certificate authority that provides free X.509 certificates for Transport Layer Security (TLS) encryption via an automated process designed to eliminate the hitherto complex process of manual creation, validation, signing, installation, and renewal of certificates for secure websites. </p>
+<p>Let’s Encrypt is a free, automated, and open certificate authority brought to you by the non-profit Internet Security Research Group (ISRG).</p>
+<p>1 million March 8, 2016，<a href="https://letsencrypt.org/2017/06/28/hundred-million-certs.html" target="_blank" rel="noopener">Milestone: 100 Million Certificates Issued</a>,  Jun 28, 2017.  ⬆️ </p>
+<p>Now Wildcard Certificates has supported on March 13, 2018. But Let’s Encrypt will generate an ECDSA root and intermediates which can be used to sign end-entity certificates by Q3 2018. See Also <a href="https://letsencrypt.org/upcoming-features/#ecdsa-root-and-intermediates" target="_blank" rel="noopener">Upcoming Features</a></p>
+<p><a href="https://tools.ietf.org/html/draft-ietf-acme-acme-07" target="_blank" rel="noopener">ACME</a>: Automatic Certificate Management Environment, ACME v2 API Enabled: March 13, 2018. </p>
+<p>Detailed Working Principle can found here <a href="https://letsencrypt.org/how-it-works/" target="_blank" rel="noopener">How It Works</a>. Core Work is <strong>Domain Validation</strong>: </p>
+<p><strong>About Domain Validation</strong>:</p>
+<p>Let’s Encrypt identifies the server administrator by public key. The first time the agent software interacts with Let’s Encrypt, it generates a new key pair and proves to the Let’s Encrypt CA that the server controls one or more domains. This is similar to the traditional CA process of creating an account and adding domains to that account.</p>
+<p>To kick off the process, the agent asks the Let’s Encrypt CA what it needs to do in order to prove that it controls <code>example.com</code>. The Let’s Encrypt CA will look at the domain name being requested and issue one or more sets of challenges. These are different ways that the agent can prove control of the domain. For example, the CA might give the agent a choice of either:</p>
+<ul>
+<li><p>Provisioning a DNS record under <code>example.com</code>, or</p>
+</li>
+<li><p>Provisioning an HTTP resource under a well-known URI on <code>https://example.com/</code></p>
+<p><img src="https://letsencrypt.org/images/howitworks_authorization.png" alt=""></p>
+</li>
+</ul>
+<h2 id="1-Install-Client-Tool-Certbot"><a href="#1-Install-Client-Tool-Certbot" class="headerlink" title="1. Install Client Tool Certbot"></a>1. Install Client Tool Certbot</h2><p>Client Tool Certbot written By Python,  is packaged in EPEL (Extra Packages for Enterprise Linux).  To use Certbot, you must first <a href="https://fedoraproject.org/wiki/EPEL#How_can_I_use_these_extra_packages.3F" target="_blank" rel="noopener">enable the EPEL repository</a>. On RHEL or Oracle Linux, you must also enable the optional channel.</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ sudo yum -y install yum-utils</span><br><span class="line">$ yum-config-manager --enable rhui-REGION-rhel-server-extras rhui-REGION-rhel-server-optional</span><br><span class="line"></span><br><span class="line">$ sudo yum install certbot-nginx</span><br></pre></td></tr></table></figure>
+<h3 id="1-1-Signal-Site-Certificate"><a href="#1-1-Signal-Site-Certificate" class="headerlink" title="1.1 Signal Site Certificate"></a>1.1 Signal Site Certificate</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Running this command will get a certificate for you and have Certbot edit your Nginx configuration automatically to serve it.</span></span><br><span class="line">$ sudo certbot --nginx</span><br><span class="line"></span><br><span class="line"><span class="comment"># If you're feeling more conservative and would like to make the changes to your Nginx configuration by hand</span></span><br><span class="line">$ sudo certbot --nginx certonly</span><br></pre></td></tr></table></figure>
+<p><strong>The detailed procedure is as follows：</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line">[root@xxx ~]<span class="comment"># certbot --nginx</span></span><br><span class="line">Saving debug <span class="built_in">log</span> to /var/<span class="built_in">log</span>/letsencrypt/letsencrypt.log</span><br><span class="line">Plugins selected: Authenticator nginx, Installer nginx</span><br><span class="line">Enter email address (used <span class="keyword">for</span> urgent renewal and security notices) (Enter <span class="string">'c'</span> to</span><br><span class="line">cancel): dwh0403@163.com</span><br><span class="line">Starting new HTTPS connection (1): acme-v01.api.letsencrypt.org</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Please <span class="built_in">read</span> the Terms of Service at</span><br><span class="line">https://letsencrypt.org/documents/LE-SA-v1.2-November-15-2017.pdf. You must</span><br><span class="line">agree <span class="keyword">in</span> order to register with the ACME server at</span><br><span class="line">https://acme-v01.api.letsencrypt.org/directory</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">(A)gree/(C)ancel: A</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Would you be willing to share your email address with the Electronic Frontier</span><br><span class="line">Foundation, a founding partner of the Let<span class="string">'s Encrypt project and the non-profit</span></span><br><span class="line"><span class="string">organization that develops Certbot? We'</span>d like to send you email about EFF and</span><br><span class="line">our work to encrypt the web, protect its users and defend digital rights.</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">(Y)es/(N)o: Y</span><br><span class="line">Starting new HTTPS connection (1): supporters.eff.org</span><br><span class="line"></span><br><span class="line">Which names would you like to activate HTTPS <span class="keyword">for</span>?</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">1: www.do1618.com</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Select the appropriate numbers separated by commas and/or spaces, or leave input</span><br><span class="line">blank to select all options shown (Enter <span class="string">'c'</span> to cancel): 1</span><br><span class="line">Obtaining a new certificate</span><br><span class="line">Performing the following challenges:</span><br><span class="line">http-01 challenge <span class="keyword">for</span> www.do1618.com</span><br><span class="line">Waiting <span class="keyword">for</span> verification...</span><br><span class="line">Cleaning up challenges</span><br><span class="line">Deploying Certificate to VirtualHost /etc/nginx/global/wordpress.conf</span><br><span class="line"></span><br><span class="line">Please choose whether or not to redirect HTTP traffic to HTTPS, removing HTTP access.</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">1: No redirect - Make no further changes to the webserver configuration.</span><br><span class="line">2: Redirect - Make all requests redirect to secure HTTPS access. Choose this <span class="keyword">for</span></span><br><span class="line">new sites, or <span class="keyword">if</span> you<span class="string">'re confident your site works on HTTPS. You can undo this</span></span><br><span class="line"><span class="string">change by editing your web server'</span>s configuration.</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Select the appropriate number [1-2] <span class="keyword">then</span> [enter] (press <span class="string">'c'</span> to cancel): 1</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Congratulations! You have successfully enabled https://www.do1618.com</span><br><span class="line"></span><br><span class="line">You should <span class="built_in">test</span> your configuration at:</span><br><span class="line">https://www.ssllabs.com/ssltest/analyze.html?d=www.do1618.com</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">IMPORTANT NOTES:</span><br><span class="line"> - Congratulations! Your certificate and chain have been saved at:</span><br><span class="line">   /etc/letsencrypt/live/www.do1618.com/fullchain.pem</span><br><span class="line">   Your key file has been saved at:</span><br><span class="line">   /etc/letsencrypt/live/www.do1618.com/privkey.pem</span><br><span class="line">   Your cert will expire on 2018-06-17. To obtain a new or tweaked</span><br><span class="line">   version of this certificate <span class="keyword">in</span> the future, simply run certbot again</span><br><span class="line">   with the <span class="string">"certonly"</span> option. To non-interactively renew *all* of</span><br><span class="line">   your certificates, run <span class="string">"certbot renew"</span></span><br><span class="line"> - Your account credentials have been saved <span class="keyword">in</span> your Certbot</span><br><span class="line">   configuration directory at /etc/letsencrypt. You should make a</span><br><span class="line">   secure backup of this folder now. This configuration directory will</span><br><span class="line">   also contain certificates and private keys obtained by Certbot so</span><br><span class="line">   making regular backups of this folder is ideal.</span><br><span class="line"> - If you like Certbot, please consider supporting our work by:</span><br><span class="line"></span><br><span class="line">   Donating to ISRG / Let<span class="string">'s Encrypt:   https://letsencrypt.org/donate</span></span><br><span class="line"><span class="string">   Donating to EFF:                    https://eff.org/donate-le</span></span><br></pre></td></tr></table></figure>
+<h3 id="1-2-Managing-certificates"><a href="#1-2-Managing-certificates" class="headerlink" title="1.2 Managing certificates"></a>1.2 Managing certificates</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">$ certbot certificates</span><br><span class="line">Saving debug <span class="built_in">log</span> to /var/<span class="built_in">log</span>/letsencrypt/letsencrypt.log</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Found the following certs:</span><br><span class="line">  Certificate Name: www.do1618.com</span><br><span class="line">    Domains: www.do1618.com</span><br><span class="line">    Expiry Date: 2018-06-17 02:19:21+00:00 (VALID: 89 days)</span><br><span class="line">    Certificate Path: /etc/letsencrypt/live/www.do1618.com/fullchain.pem</span><br><span class="line">    Private Key Path: /etc/letsencrypt/live/www.do1618.com/privkey.pem</span><br><span class="line">  Certificate Name: do1618.com</span><br><span class="line">    Domains: *.do1618.com do1618.com</span><br><span class="line">    Expiry Date: 2018-06-17 04:26:47+00:00 (VALID: 89 days)</span><br><span class="line">    Certificate Path: /etc/letsencrypt/live/do1618.com/fullchain.pem</span><br><span class="line">    Private Key Path: /etc/letsencrypt/live/do1618.com/privkey.pem</span><br><span class="line">-------------------------------------------------------------------------------</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ certbot delete --cert-name example.com</span><br></pre></td></tr></table></figure>
+<h2 id="2-Automating-Renewal"><a href="#2-Automating-Renewal" class="headerlink" title="2. Automating Renewal"></a>2. Automating Renewal</h2><blockquote>
+<p>Let’s Encrypt CA issues short-lived certificates (90 days). Make sure you renew the certificates at least once in 3 months.</p>
+</blockquote>
+<p>Certbot can be configured to renew your certificates automatically before they expire.Since Let’s Encrypt certificates last for 90 days, it’s highly advisable to take advantage of this feature. You can test automatic renewal for your certificates by running this command:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo certbot renew --dry-run</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">Saving debug <span class="built_in">log</span> to /var/<span class="built_in">log</span>/letsencrypt/letsencrypt.log</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Processing /etc/letsencrypt/renewal/www.do1618.com.conf</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Cert not due <span class="keyword">for</span> renewal, but simulating renewal <span class="keyword">for</span> dry run</span><br><span class="line">Plugins selected: Authenticator nginx, Installer nginx</span><br><span class="line">Starting new HTTPS connection (1): acme-staging.api.letsencrypt.org</span><br><span class="line">Renewing an existing certificate</span><br><span class="line">Performing the following challenges:</span><br><span class="line">http-01 challenge <span class="keyword">for</span> www.do1618.com</span><br><span class="line">Waiting <span class="keyword">for</span> verification...</span><br><span class="line">Cleaning up challenges</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">new certificate deployed with reload of nginx server; fullchain is</span><br><span class="line">/etc/letsencrypt/live/www.do1618.com/fullchain.pem</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">** DRY RUN: simulating <span class="string">'certbot renew'</span> close to cert expiry</span><br><span class="line">**          (The <span class="built_in">test</span> certificates below have not been saved.)</span><br><span class="line"></span><br><span class="line">Congratulations, all renewals succeeded. The following certs have been renewed:</span><br><span class="line">  /etc/letsencrypt/live/www.do1618.com/fullchain.pem (success)</span><br><span class="line">** DRY RUN: simulating <span class="string">'certbot renew'</span> close to cert expiry</span><br><span class="line">**          (The <span class="built_in">test</span> certificates above have not been saved.)</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">IMPORTANT NOTES:</span><br><span class="line"> - Your account credentials have been saved <span class="keyword">in</span> your Certbot</span><br><span class="line">   configuration directory at /etc/letsencrypt. You should make a</span><br><span class="line">   secure backup of this folder now. This configuration directory will</span><br><span class="line">   also contain certificates and private keys obtained by Certbot so</span><br><span class="line">   making regular backups of this folder is ideal.</span><br></pre></td></tr></table></figure>
+<p>If that appears to be working correctly, you can arrange for automatic renewal by adding a <code>cron job</code> or <code>systemd timer</code> which runs the following:</p>
+<p>An example cron job might look like this, which will run at noon and midnight every day:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">0 0,12 * * * python -c &apos;import random; import time; time.sleep(random.random() * 3600)&apos; &amp;&amp; certbot renew</span><br></pre></td></tr></table></figure>
+<p>##3. Advanced: Wildcard Certificat </p>
+<h2 id="3-1-Built-in-Supported-DNS-Manager"><a href="#3-1-Built-in-Supported-DNS-Manager" class="headerlink" title="3.1 Built-in Supported DNS Manager"></a>3.1 Built-in Supported DNS Manager</h2><blockquote>
+<p>Wildcard certificate support <a href="https://community.letsencrypt.org/t/acme-v2-and-wildcard-certificate-support-is-live/55579/" target="_blank" rel="noopener">is live</a>.</p>
+<p><a href="https://letsencrypt.org/2017/07/06/wildcard-certificates-coming-jan-2018.html" target="_blank" rel="noopener">Wildcard Certificates Coming January 2018</a>  Update, March 13, 2018,  </p>
+</blockquote>
+<p>Supported <a href="https://certbot.eff.org/docs/using.html#dns-plugins" target="_blank" rel="noopener">Certbot’s DNS plugins</a>. </p>
+<p>Wildcard certificates will be offered free of charge via our <a href="https://letsencrypt.org/2017/06/14/acme-v2-api.html" target="_blank" rel="noopener">upcoming ACME v2 API endpoint</a>. We will initially only support base domain validation via DNS for wildcard certificates, but may explore additional validation options over time. </p>
+<p>If you want to obtain a wildcard certificate using Let’s Encrypt’s new ACMEv2 server, you’ll also need to use one of <a href="https://certbot.eff.org/docs/using.html#dns-plugins" target="_blank" rel="noopener">Certbot’s DNS plugins</a>. To do this, make sure the plugin for your DNS provider is installed using the instructions above and run a command like the following:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ sudo certbot -a dns-plugin -i nginx -d <span class="string">"*.example.com"</span> -d example.com --server https://acme-v02.api.letsencrypt.org/directory</span><br><span class="line"></span><br><span class="line"><span class="comment"># Update certbot-dns-cloudxns setting infos and run the command like the following:</span></span><br><span class="line"><span class="comment"># sudo certbot -a certbot-dns-cloudxns -i nginx -d "*.example.com" -d example.com --server https://acme-v02.api.letsencrypt.org/directory</span></span><br></pre></td></tr></table></figure>
+<p>Certbot’s DNS plugins are also available for your system which can be used to automate obtaining a wildcard certificate from Let’s Encrypt’s ACMEv2 server. To use one of these plugins, you must have configured DNS for the domain you want to obtain a certificate for with a DNS provider that Certbot has a plugin for. </p>
+<h3 id="3-2-Manually-For-Aliyun-DNS-Just-For-Study"><a href="#3-2-Manually-For-Aliyun-DNS-Just-For-Study" class="headerlink" title="3.2 Manually For Aliyun DNS  (Just For Study)"></a>3.2 Manually For Aliyun DNS  (Just For Study)</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line">$ certbot certonly -d <span class="string">"*.do1618.com"</span> -d do1618.com --server https://acme-v02.api.letsencrypt.org/directory --manual --preferred-challenges dns</span><br><span class="line">Saving debug <span class="built_in">log</span> to /var/<span class="built_in">log</span>/letsencrypt/letsencrypt.log</span><br><span class="line">Plugins selected: Authenticator manual, Installer None</span><br><span class="line">Starting new HTTPS connection (1): acme-v02.api.letsencrypt.org</span><br><span class="line">Obtaining a new certificate</span><br><span class="line">Performing the following challenges:</span><br><span class="line">dns-01 challenge <span class="keyword">for</span> do1618.com</span><br><span class="line">dns-01 challenge <span class="keyword">for</span> do1618.com</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">NOTE: The IP of this machine will be publicly logged as having requested this</span><br><span class="line">certificate. If you<span class="string">'re running certbot in manual mode on a machine that is not</span></span><br><span class="line"><span class="string">your server, please ensure you'</span>re okay with that.</span><br><span class="line"></span><br><span class="line">Are you OK with your IP being logged?</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">(Y)es/(N)o: Y</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Please deploy a DNS TXT record under the name</span><br><span class="line">_acme-challenge.do1618.com with the following value:</span><br><span class="line"></span><br><span class="line">t-DcEVPfmn71-gmQ4st_Vwed-aF6uyz_1wa2SGCh-ZA    See ①</span><br><span class="line"></span><br><span class="line">Before continuing, verify the record is deployed.</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Press Enter to Continue</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Please deploy a DNS TXT record under the name</span><br><span class="line">_acme-challenge.do1618.com with the following value:</span><br><span class="line"></span><br><span class="line">WWO3AYhzqWwp71oFtNAD0Yio6KxuGaCBbXPdnsuCw1k    See ②</span><br><span class="line"></span><br><span class="line">Before continuing, verify the record is deployed.</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Press Enter to Continue</span><br><span class="line">Waiting <span class="keyword">for</span> verification...</span><br><span class="line">Cleaning up challenges</span><br><span class="line"></span><br><span class="line">IMPORTANT NOTES:</span><br><span class="line"> - Congratulations! Your certificate and chain have been saved at:</span><br><span class="line">   /etc/letsencrypt/live/do1618.com/fullchain.pem</span><br><span class="line">   Your key file has been saved at:</span><br><span class="line">   /etc/letsencrypt/live/do1618.com/privkey.pem</span><br><span class="line">   Your cert will expire on 2018-06-17. To obtain a new or tweaked</span><br><span class="line">   version of this certificate <span class="keyword">in</span> the future, simply run certbot</span><br><span class="line">   again. To non-interactively renew *all* of your certificates, run</span><br><span class="line">   <span class="string">"certbot renew"</span></span><br><span class="line"> - If you like Certbot, please consider supporting our work by:</span><br><span class="line"></span><br><span class="line">   Donating to ISRG / Let<span class="string">'s Encrypt:   https://letsencrypt.org/donate</span></span><br><span class="line"><span class="string">   Donating to EFF:                    https://eff.org/donate-le</span></span><br></pre></td></tr></table></figure>
+<p><a href="https://certbot.eff.org/docs/using.html#dns-plugins" target="_blank" rel="noopener">Certbot’s DNS plugins</a> don’t include  Aliyun implement, so we need do the work of challenges manually. However, there will be a problem when renewing the certificates.  <strong>Not recommended for production environments</strong>.</p>
+<p>① Set Value of txt _acme-challenge.do1618.com to “t-DcEVPfmn71-gmQ4st_Vwed-aF6uyz_1wa2SGCh-ZA”</p>
+<p>Open New  Terminal to confirm:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">$ dig -t txt _acme-challenge.do1618.com</span><br><span class="line"></span><br><span class="line">....</span><br><span class="line"></span><br><span class="line">;; OPT PSEUDOSECTION:</span><br><span class="line">; EDNS: version: 0, flags:; udp: 4096</span><br><span class="line">;; QUESTION SECTION:</span><br><span class="line">;_acme-challenge.do1618.com.	IN	TXT</span><br><span class="line"></span><br><span class="line">;; ANSWER SECTION:</span><br><span class="line">_acme-challenge.do1618.com. 600	IN	TXT	<span class="string">"t-DcEVPfmn71-gmQ4st_Vwed-aF6uyz_1wa2SGCh-ZA"</span></span><br><span class="line"></span><br><span class="line">....</span><br></pre></td></tr></table></figure>
+<p>② Change Value of txt _acme-challenge.do1618.com to “WWO3AYhzqWwp71oFtNAD0Yio6KxuGaCBbXPdnsuCw1k”</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">$ dig -t txt _acme-challenge.do1618.com</span><br><span class="line"></span><br><span class="line">; &lt;&lt;&gt;&gt; DiG 9.9.4-RedHat-9.9.4-51.el7_4.2 &lt;&lt;&gt;&gt; -t txt _acme-challenge.do1618.com</span><br><span class="line">;; global options: +cmd</span><br><span class="line">;; Got answer:</span><br><span class="line">;; -&gt;&gt;HEADER&lt;&lt;- opcode: QUERY, status: NOERROR, id: 18042</span><br><span class="line">;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 2, ADDITIONAL: 17</span><br><span class="line"></span><br><span class="line">;; OPT PSEUDOSECTION:</span><br><span class="line">; EDNS: version: 0, flags:; udp: 4096</span><br><span class="line">;; QUESTION SECTION:</span><br><span class="line">;_acme-challenge.do1618.com.	IN	TXT</span><br><span class="line"></span><br><span class="line">;; ANSWER SECTION:</span><br><span class="line">_acme-challenge.do1618.com. 600	IN	TXT	<span class="string">"WWO3AYhzqWwp71oFtNAD0Yio6KxuGaCBbXPdnsuCw1k"</span></span><br><span class="line"></span><br><span class="line">;; AUTHORITY SECTION:</span><br><span class="line">do1618.com.		131555	IN	NS	dns9.hichina.com.</span><br><span class="line">do1618.com.		131555	IN	NS	dns10.hichina.com.</span><br><span class="line"></span><br><span class="line">;; ADDITIONAL SECTION:</span><br><span class="line">dns9.hichina.com.	1119	IN	A	106.11.141.115</span><br><span class="line">.....</span><br><span class="line"></span><br><span class="line">;; Query time: 6 msec</span><br><span class="line">;; SERVER: 10.202.72.118<span class="comment">#53(10.202.72.118)</span></span><br><span class="line">;; WHEN: Mon Mar 19 13:24:47 CST 2018</span><br><span class="line">;; MSG SIZE  rcvd: 414</span><br></pre></td></tr></table></figure>
+<h3 id="3-3-Acme-sh-Helper-For-Aliyun-DNS"><a href="#3-3-Acme-sh-Helper-For-Aliyun-DNS" class="headerlink" title="3.3 Acme.sh Helper For Aliyun DNS"></a>3.3 Acme.sh Helper For Aliyun DNS</h3><p>Use Aliyun DNS</p>
+<ol>
+<li><p><strong>Install acme.sh</strong></p>
+<p>Acme.sh Installs Crontab Task to renew Certs which is almost expired automaticly。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># install scripts</span></span><br><span class="line">$ curl  https://get.acme.sh | sh</span><br><span class="line">$ souce ~/.bash_profile</span><br></pre></td></tr></table></figure>
+</li>
+<li><p><strong>Generate AccessKey and Token.</strong> Install the seceret to dnsapi/dns_ali.sh.</p>
+</li>
+<li><p><strong>Apply for wildcard cert</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">$ acme.sh  --issue -d do1618.com  -d <span class="string">'*.do1618.com'</span>  --dns dns_ali</span><br><span class="line">[Mon Mar 19 15:33:06 CST 2018] Registering account</span><br><span class="line">[Mon Mar 19 15:33:08 CST 2018] Registered</span><br><span class="line">[Mon Mar 19 15:33:08 CST 2018] ACCOUNT_THUMBPRINT=<span class="string">'Yu5XZCWdGhzbskMps8D_HtUhTat6oBT6WonDCFQlnOo'</span></span><br><span class="line">[Mon Mar 19 15:33:08 CST 2018] Multi domain=<span class="string">'DNS:do1618.com,DNS:*.do1618.com'</span></span><br><span class="line">[Mon Mar 19 15:33:08 CST 2018] Getting domain auth token <span class="keyword">for</span> each domain</span><br><span class="line">[Mon Mar 19 15:33:10 CST 2018] Getting webroot <span class="keyword">for</span> domain=<span class="string">'do1618.com'</span></span><br><span class="line">[Mon Mar 19 15:33:10 CST 2018] Getting webroot <span class="keyword">for</span> domain=<span class="string">'*.do1618.com'</span></span><br><span class="line">[Mon Mar 19 15:33:10 CST 2018] Found domain api file: /root/.acme.sh/dnsapi/dns_ali.sh</span><br><span class="line">[Mon Mar 19 15:33:12 CST 2018] Found domain api file: /root/.acme.sh/dnsapi/dns_ali.sh</span><br><span class="line">[Mon Mar 19 15:33:14 CST 2018] Sleep 120 seconds <span class="keyword">for</span> the txt records to take effect</span><br><span class="line">[Mon Mar 19 15:35:16 CST 2018] Verifying:do1618.com</span><br><span class="line">[Mon Mar 19 15:35:19 CST 2018] Pending</span><br><span class="line">[Mon Mar 19 15:35:21 CST 2018] Success</span><br><span class="line">[Mon Mar 19 15:35:21 CST 2018] Verifying:*.do1618.com</span><br><span class="line">[Mon Mar 19 15:35:25 CST 2018] Pending</span><br><span class="line">[Mon Mar 19 15:35:27 CST 2018] Success</span><br><span class="line">[Mon Mar 19 15:35:27 CST 2018] Removing DNS records.</span><br><span class="line">[Mon Mar 19 15:35:33 CST 2018] Verify finished, start to sign.</span><br><span class="line">[Mon Mar 19 15:35:35 CST 2018] Cert success.</span><br><span class="line">-----BEGIN CERTIFICATE-----</span><br><span class="line">.....</span><br><span class="line">-----END CERTIFICATE-----</span><br><span class="line">[Mon Mar 19 15:35:35 CST 2018] Your cert is <span class="keyword">in</span>  /root/.acme.sh/do1618.com/do1618.com.cer</span><br><span class="line">[Mon Mar 19 15:35:35 CST 2018] Your cert key is <span class="keyword">in</span>  /root/.acme.sh/do1618.com/do1618.com.key</span><br><span class="line">[Mon Mar 19 15:35:35 CST 2018] The intermediate CA cert is <span class="keyword">in</span>  /root/.acme.sh/do1618.com/ca.cer</span><br><span class="line">[Mon Mar 19 15:35:35 CST 2018] And the full chain certs is there:  /root/.acme.sh/do1618.com/fullchain.cer</span><br></pre></td></tr></table></figure>
+<p>​</p>
+</li>
+<li><p><strong>Install the cert to Nginx</strong></p>
+<p>After the cert is generated, you probably want to install/copy the cert to your Apache/Nginx or other servers. You <strong>MUST</strong>use this command to copy the certs to the target files, <strong>DO NOT</strong> use the certs files in <strong>~/.acme.sh/</strong> folder, they are for internal use only, the folder structure may change in the future.</p>
+<p>​</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ acme.sh --install-cert -d do1618.com \</span><br><span class="line">	--key-file       /xxx/do1618.com.key  \</span><br><span class="line">	--fullchain-file /xxxx/do1618.com.cer \</span><br><span class="line">	--reloadcmd     <span class="string">"service nginx force-reload"</span></span><br></pre></td></tr></table></figure>
+<p>​</p>
+<p>Sample Setting we add to Nginx manually.</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">server &#123;</span><br><span class="line">    listen 443 ssl http2 default deferred;</span><br><span class="line">    server_name *.do1618.com;</span><br><span class="line"></span><br><span class="line">    #ssl on;</span><br><span class="line">    ssl_certificate /xxxx/fullchain.cer;</span><br><span class="line">    ssl_certificate_key /xxxx/do1618.com.key;</span><br><span class="line">    // ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>​</p>
+</li>
+</ol>
+<h2 id="4-Serving-Wildcard-to-Domains"><a href="#4-Serving-Wildcard-to-Domains" class="headerlink" title="4. Serving Wildcard to Domains"></a>4. Serving Wildcard to Domains</h2><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># configure multi-ssl domains</span></span><br><span class="line"><span class="comment">#  server &#123;</span></span><br><span class="line"><span class="comment">#    listen 443 ssl http2;</span></span><br><span class="line"><span class="comment">#    server_name blog.xxxx.com;</span></span><br><span class="line"><span class="comment">#   &#125;</span></span><br><span class="line"><span class="comment">#</span></span><br><span class="line"><span class="comment">#      server &#123;</span></span><br><span class="line"><span class="comment">#    listen 443 ssl http2;</span></span><br><span class="line"><span class="comment">#    server_name hexo.xxxx.com;</span></span><br><span class="line"><span class="comment">#   &#125;</span></span><br><span class="line">$ nginx -t</span><br><span class="line">nginx: [emerg] duplicate listen options <span class="keyword">for</span> 0.0.0.0:443 <span class="keyword">in</span> /etc/nginx/global/wordpress.conf:94</span><br><span class="line">nginx: configuration file /etc/nginx/nginx.conf <span class="built_in">test</span> failed</span><br></pre></td></tr></table></figure>
+<p>A more generic solution for running several HTTPS servers on a single IP address is <a href="http://en.wikipedia.org/wiki/Server_Name_Indication" target="_blank" rel="noopener">TLS Server Name Indication extension</a> (SNI, RFC 6066), which allows a browser to pass a requested server name during the SSL handshake and, therefore, the server will know which certificate it should use for the connection. SNI is currently <a href="http://en.wikipedia.org/wiki/Server_Name_Indication#Support" target="_blank" rel="noopener">supported</a> by most modern browsers, though may not be used by some old or special clients.</p>
+<p>In order to use SNI in nginx, it must be supported in both the OpenSSL library with which the nginx binary has been built as well as the library to which it is being dynamically linked at run time. OpenSSL supports SNI since 0.9.8f version if it was built with config option “–enable-tlsext”. Since OpenSSL 0.9.8j this option is enabled by default. If nginx was built with SNI support, then nginx will show this when run with the “-V” switch:</p>
+ <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ nginx -V</span><br><span class="line">...</span><br><span class="line">TLS SNI support enabled</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">$ wget http://nginx.org/download/nginx-1.13.10.tar.gz</span><br><span class="line">$ tar xzvf nginx-1.13.10.tar.gz</span><br><span class="line">$ <span class="built_in">cd</span> nginx-1.13.10/</span><br><span class="line">$ ./configure --prefix=/usr --with-http_ssl_module  --with-http_v2_module --with-openssl-opt=<span class="string">"enable-tlsext"</span></span><br><span class="line">$ make</span><br><span class="line">$./objs/nginx -V</span><br><span class="line">nginx version: nginx/1.13.10</span><br><span class="line">built by gcc 4.8.5 20150623 (Red Hat 4.8.5-16) (GCC)</span><br><span class="line">built with OpenSSL 1.0.2k-fips  26 Jan 2017</span><br><span class="line">TLS SNI support enabled</span><br><span class="line">configure arguments: --prefix=/usr --with-http_ssl_module --with-openssl-opt=<span class="built_in">enable</span>-tlsext</span><br><span class="line">$ systemctl stop nginx</span><br><span class="line">$ mv /usr/sbin/nginx /usr/sbin/nginx.bk</span><br><span class="line">$ make install</span><br><span class="line">$ systemctl start nginx</span><br></pre></td></tr></table></figure>
+<p><strong>Notice:</strong></p>
+<p>The default config of Nginx installed by Centos7.0 is “/etc/nginx/nginx.conf”. However, Nginx we compiled uses the config “/usr/nginx/nginx.conf”.  We can customize file of Nginx service “/usr/lib/systemd/system/nginx.service” to correct this behavior.</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx.conf</span><br><span class="line">ExecStart=/usr/sbin/nginx  -c /etc/nginx/nginx.conf</span><br></pre></td></tr></table></figure>
+<p>Rerun the cmd again with the same tls setting, no warnings should occur.</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ nginx -t -c /etc/nginx/nginx.conf</span><br><span class="line">nginx: the configuration file /usr/conf/nginx.conf syntax is ok</span><br><span class="line">nginx: configuration file /usr/conf/nginx.conf <span class="built_in">test</span> is successful</span><br></pre></td></tr></table></figure>
+<h2 id="5-Issues"><a href="#5-Issues" class="headerlink" title="5. Issues"></a>5. Issues</h2><h3 id="5-1-X509-object-has-no-attribute-‘-x509’"><a href="#5-1-X509-object-has-no-attribute-‘-x509’" class="headerlink" title="5.1 X509 object has no attribute ‘_x509’ "></a>5.1 <a href="https://github.com/certbot/certbot/issues/3944" target="_blank" rel="noopener">X509 object has no attribute ‘_x509’ </a></h3><h3 id="5-2-The-manual-plugin-is-not-working"><a href="#5-2-The-manual-plugin-is-not-working" class="headerlink" title="5.2 The manual plugin is not working"></a>5.2 The manual plugin is not working</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line">[root@iZ23xxwlyliZ ~]<span class="comment"># certbot renew --dry-run</span></span><br><span class="line">Saving debug <span class="built_in">log</span> to /var/<span class="built_in">log</span>/letsencrypt/letsencrypt.log</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Processing /etc/letsencrypt/renewal/www.do1618.com.conf</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Cert not due <span class="keyword">for</span> renewal, but simulating renewal <span class="keyword">for</span> dry run</span><br><span class="line">Plugins selected: Authenticator nginx, Installer nginx</span><br><span class="line">Starting new HTTPS connection (1): acme-staging.api.letsencrypt.org</span><br><span class="line">Renewing an existing certificate</span><br><span class="line">Performing the following challenges:</span><br><span class="line">http-01 challenge <span class="keyword">for</span> www.do1618.com</span><br><span class="line">Waiting <span class="keyword">for</span> verification...</span><br><span class="line">Cleaning up challenges</span><br><span class="line">▽</span><br><span class="line">▽</span><br><span class="line">        <span class="comment">## This should be in your http block and if it is, it's not needed here.</span></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">new certificate deployed with reload of nginx server; fullchain is</span><br><span class="line">/etc/letsencrypt/live/www.do1618.com/fullchain.pem</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Processing /etc/letsencrypt/renewal/do1618.com.conf</span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">Cert not due <span class="keyword">for</span> renewal, but simulating renewal <span class="keyword">for</span> dry run</span><br><span class="line">Could not choose appropriate plugin: The manual plugin is not working; there may be problems with your existing configuration.</span><br><span class="line">The error was: PluginError(<span class="string">'An authentication script must be provided with --manual-auth-hook when using the manual plugin non-interactively.'</span>,)</span><br><span class="line">Attempting to renew cert (do1618.com) from /etc/letsencrypt/renewal/do1618.com.conf produced an unexpected error: The manual plugin is not working; there may be problems with your existing configuration.</span><br><span class="line">The error was: PluginError(<span class="string">'An authentication script must be provided with --manual-auth-hook when using the manual plugin non-interactively.'</span>,). Skipping.</span><br><span class="line">The following certs could not be renewed:</span><br><span class="line">  /etc/letsencrypt/live/do1618.com/fullchain.pem (failure)</span><br><span class="line"></span><br><span class="line">-------------------------------------------------------------------------------</span><br><span class="line">** DRY RUN: simulating <span class="string">'certbot renew'</span> close to cert expiry</span><br><span class="line">**          (The <span class="built_in">test</span> certificates below have not been saved.)</span><br><span class="line"></span><br><span class="line">The following certs were successfully renewed:</span><br><span class="line">  /etc/letsencrypt/live/www.do1618.com/fullchain.pem (success)</span><br><span class="line"></span><br><span class="line">The following certs could not be renewed:</span><br><span class="line">  /etc/letsencrypt/live/do1618.com/fullchain.pem (failure)</span><br><span class="line">** DRY RUN: simulating <span class="string">'certbot renew'</span> close to cert expiry</span><br><span class="line">**          (The <span class="built_in">test</span> certificates above have not been saved.)</span><br><span class="line">-------------------------------------------------------------------------------</span><br></pre></td></tr></table></figure>
+<p>Three Ways to go:</p>
+<ol>
+<li><p>We need to choose build-in supported DNS manager, For example transfer the  Manager of DNS from Aliyun to <a href="https://www.cloudxns.net/" target="_blank" rel="noopener">CloudXNS</a>.</p>
+</li>
+<li><p>Or Find another Tools supported ACME v2 protocal and our DNS manager such as <a href="https://github.com/Neilpang/acme.sh" target="_blank" rel="noopener">Acme.sh</a>, which is a pure Unix shell script implementing <em>ACME</em> client protocol.</p>
+</li>
+<li><p>Or We implement a DNS plugin ourselves.</p>
+<p>​</p>
+</li>
+</ol>
+<h2 id="6-Resource"><a href="#6-Resource" class="headerlink" title="6. Resource"></a>6. Resource</h2><ol>
+<li><a href="https://github.com/letsencrypt" target="_blank" rel="noopener">Let’s Encrypt</a> on <a href="https://en.wikipedia.org/wiki/GitHub" target="_blank" rel="noopener">GitHub</a></li>
+<li><a href="https://letsencrypt.org/2017/07/06/wildcard-certificates-coming-jan-2018.html" target="_blank" rel="noopener">Wildcard Certificates Coming January 2018</a></li>
+<li><a href="https://mp.weixin.qq.com/s?__biz=MzIwMzg1ODcwMw==&amp;mid=2247487566&amp;idx=1&amp;sn=3eea2bc71b123967fca82934ee1353e7&amp;chksm=96c9a62ea1be2f3803a053df9ec46970a2fe24c64c08c1695b909ed6f836168a840dac777282#rd" target="_blank" rel="noopener">Let’s Encrypt 宣布支持通配符证书，所有子域名可轻松开启 HTTPS</a></li>
+<li><a href="https://github.com/Neilpang/acme.sh" target="_blank" rel="noopener">A pure Unix shell script implementing ACME client protocol</a> <strong>Recommend for aliyun DNS</strong></li>
+<li><a href="https://github.com/fenying/le-alidns" target="_blank" rel="noopener">通过阿里云 DNS 为 Let’s Encrypt 签发 SSL 证书提供验证的脚本工具</a></li>
+<li><a href="https://acme.sh" target="_blank" rel="noopener">A pure Unix shell script implementing ACME client protocol</a> <a href="https://github.com/Neilpang/acme.sh" target="_blank" rel="noopener">Github</a></li>
+<li><a href="https://blog.neroxps.cn/2018/03/17/acme/" target="_blank" rel="noopener">利用acme.sh申请 Letsencrypt 免费 SSL 证书</a></li>
+<li><a href="https://imququ.com/post/letsencrypt-certificate.html" target="_blank" rel="noopener">Let’s Encrypt，免费好用的 HTTPS 证书</a></li>
+<li><a href="https://www.zoulei.net/2016/03/11/letsencrypt_aliyun_oss/" target="_blank" rel="noopener">阿里云OSS绑定letsencrypt证书</a></li>
+<li><a href="https://www.jianshu.com/p/c5c9d071e395" target="_blank" rel="noopener">Let’s Encrypt 终于支持通配符证书了</a></li>
+</ol>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/" title="Kubernetes" nodeport="" vs="" loadbalancer="" ingress？="" 我们应该什么时候使用？（译）="">
+                    <div class="nextTitle">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/03/18/dust-in-spring/" title="春日浮尘">
+                    <div class="prevTitle">春日浮尘</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/03/20/letsencrypt_certbot/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Lets Encrypt = Free 100% HTTPS"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#Lets-Encrypt-Free-100-HTTPS"><span class="toc-number">1.</span> <span class="toc-text">Lets Encrypt = Free 100% HTTPS</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-Install-Client-Tool-Certbot"><span class="toc-number">1.1.</span> <span class="toc-text">1. Install Client Tool Certbot</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-Signal-Site-Certificate"><span class="toc-number">1.1.1.</span> <span class="toc-text">1.1 Signal Site Certificate</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-Managing-certificates"><span class="toc-number">1.1.2.</span> <span class="toc-text">1.2 Managing certificates</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-Automating-Renewal"><span class="toc-number">1.2.</span> <span class="toc-text">2. Automating Renewal</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-1-Built-in-Supported-DNS-Manager"><span class="toc-number">1.3.</span> <span class="toc-text">3.1 Built-in Supported DNS Manager</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-Manually-For-Aliyun-DNS-Just-For-Study"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.2 Manually For Aliyun DNS  (Just For Study)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-Acme-sh-Helper-For-Aliyun-DNS"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.3 Acme.sh Helper For Aliyun DNS</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-Serving-Wildcard-to-Domains"><span class="toc-number">1.4.</span> <span class="toc-text">4. Serving Wildcard to Domains</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-Issues"><span class="toc-number">1.5.</span> <span class="toc-text">5. Issues</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-X509-object-has-no-attribute-‘-x509’"><span class="toc-number">1.5.1.</span> <span class="toc-text">5.1 X509 object has no attribute ‘_x509’ </span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-The-manual-plugin-is-not-working"><span class="toc-number">1.5.2.</span> <span class="toc-text">5.2 The manual plugin is not working</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-Resource"><span class="toc-number">1.6.</span> <span class="toc-text">6. Resource</span></a></li></ol></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>istio pilot-discovery 源码分析 · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">istio pilot-discovery 源码分析</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            istio pilot-discovery 源码分析
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="istio">istio</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2019/02/08</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h2 id="架构"><a href="#架构" class="headerlink" title="架构"></a>架构</h2><p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1ftppyenvgyj30la0fudhb.jpg" alt=""></p>
+<h2 id="介绍"><a href="#介绍" class="headerlink" title="介绍"></a>介绍</h2><p>完整的 yaml 文件参见 <a href="https://gist.github.com/DavadDi/3f515a972f33225cd5828ec47e31efe7" target="_blank" rel="noopener">pilot-yaml</a>。</p>
+<p>Dockerfile</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">FROM istionightly/base_debug</span><br><span class="line"></span><br><span class="line">ADD pilot-discovery /usr/<span class="built_in">local</span>/bin/</span><br><span class="line">ADD cacert.pem /cacert.pem</span><br><span class="line">ENTRYPOINT [<span class="string">"/usr/local/bin/pilot-discovery"</span>]</span><br></pre></td></tr></table></figure>
+<p>启动命令行</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># ps -ef -www|grep pilot</span></span><br><span class="line">$/usr/<span class="built_in">local</span>/bin/pilot-discovery discovery</span><br></pre></td></tr></table></figure>
+<p>命令行帮助</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kubectl exec -ti istio-pilot-f9d78b7b9-fmhfb -n istio-system -c discovery -- /usr/local/bin/pilot-discovery --help</span></span><br><span class="line">Usage:</span><br><span class="line">  pilot-discovery [<span class="built_in">command</span>]</span><br><span class="line"></span><br><span class="line">Available Commands:</span><br><span class="line">  discovery   Start Istio proxy discovery service</span><br><span class="line">  <span class="built_in">help</span>        Help about any <span class="built_in">command</span></span><br><span class="line">  request     Makes an HTTP request to Pilot metrics/debug endpoint</span><br><span class="line">  version     Prints out build version information</span><br></pre></td></tr></table></figure>
+<p>discovery 相关的帮助</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kubectl exec -ti istio-pilot-f9d78b7b9-fmhfb -n istio-system -c discovery -- /usr/local/bin/pilot-discovery discovery --help</span></span><br><span class="line">Defaulting container name to discovery.</span><br><span class="line"></span><br><span class="line">Start Istio proxy discovery service</span><br><span class="line"></span><br><span class="line">Usage:</span><br><span class="line">  pilot-discovery discovery [flags]</span><br><span class="line"></span><br><span class="line">Flags:</span><br><span class="line">  -a, --appNamespace string                 Restrict the applications namespace the controller manages; <span class="keyword">if</span> not <span class="built_in">set</span>, controller watches all namespaces</span><br><span class="line">      --cfConfig string                     Cloud Foundry config file</span><br><span class="line">      --clusterRegistriesConfigMap string   ConfigMap map <span class="keyword">for</span> clusters config store</span><br><span class="line">      --clusterRegistriesNamespace string   Namespace <span class="keyword">for</span> ConfigMap <span class="built_in">which</span> stores clusters configs</span><br><span class="line">      --configDir string                    Directory to watch <span class="keyword">for</span> updates to config yaml files. If specified, the files will be used as the <span class="built_in">source</span> of config, rather than a CRD client.</span><br><span class="line">      --consulserverInterval duration       Interval (<span class="keyword">in</span> seconds) <span class="keyword">for</span> polling the Consul service registry (default 2s)</span><br><span class="line">      --consulserverURL string              URL <span class="keyword">for</span> the Consul server</span><br><span class="line">      --<span class="built_in">disable</span>-install-crds                Disable discovery service from verifying the existence of CRDs at startup and <span class="keyword">then</span> installing <span class="keyword">if</span> not detected.  It is recommended to be <span class="built_in">disable</span> <span class="keyword">for</span> highly available setups.</span><br><span class="line">      --discovery_cache                     Enable caching discovery service responses (default <span class="literal">true</span>)</span><br><span class="line">      --domain string                       DNS domain suffix (default <span class="string">"cluster.local"</span>)</span><br><span class="line">      --grpcAddr string                     Discovery service grpc address (default <span class="string">":15010"</span>)</span><br><span class="line">  -h, --<span class="built_in">help</span>                                <span class="built_in">help</span> <span class="keyword">for</span> discovery</span><br><span class="line">      --httpAddr string                     Discovery service HTTP address (default <span class="string">":8080"</span>)</span><br><span class="line">      --kubeconfig string                   Use a Kubernetes configuration file instead of <span class="keyword">in</span>-cluster configuration</span><br><span class="line">      --meshConfig string                   File name <span class="keyword">for</span> Istio mesh configuration. If not specified, a default mesh will be used. (default <span class="string">"/etc/istio/config/mesh"</span>)</span><br><span class="line">      --monitoringAddr string               HTTP address to use <span class="keyword">for</span> the exposing pilot self-monitoring information (default <span class="string">":9093"</span>)</span><br><span class="line">  -n, --namespace string                    Select a namespace <span class="built_in">where</span> the controller resides. If not <span class="built_in">set</span>, uses <span class="variable">$&#123;POD_NAMESPACE&#125;</span> environment variable</span><br><span class="line">      --plugins stringSlice                 comma separated list of networking plugins to <span class="built_in">enable</span> (default [authn,authz,health,mixer,envoyfilter])</span><br><span class="line">      --profile                             Enable profiling via web interface host:port/debug/pprof (default <span class="literal">true</span>)</span><br><span class="line">      --registries stringSlice              Comma separated list of platform service registries to <span class="built_in">read</span> from (choose one or more from &#123;Kubernetes, Consul, CloudFoundry, Mock, Config&#125;) (default [Kubernetes])</span><br><span class="line">      --resync duration                     Controller resync interval (default 1m0s)</span><br><span class="line">      --secureGrpcAddr string               Discovery service grpc address, with https (default <span class="string">":15012"</span>)</span><br><span class="line">      --webhookEndpoint string              Webhook API endpoint (supports http://sockethost, and unix:///absolute/path/to/socket</span><br><span class="line"></span><br><span class="line">Global Flags:</span><br><span class="line">   省略</span><br></pre></td></tr></table></figure>
+<p>主要参数：</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>默认值</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>–appNamespace</td>
+<td>空</td>
+<td>与 helm 安装中的 oneNamespace 对应</td>
+</tr>
+<tr>
+<td>–configDir</td>
+<td>空</td>
+<td>表明 pilot 的两种来源：配置文件和 CRD</td>
+</tr>
+<tr>
+<td>–discovery_cache</td>
+<td>ture</td>
+<td>启动 cache，有助于提升性能</td>
+</tr>
+<tr>
+<td>–domain</td>
+<td>“cluster.local”</td>
+<td>k8s 中域后缀</td>
+</tr>
+<tr>
+<td>–grpcAddr</td>
+<td>:15010</td>
+<td></td>
+</tr>
+<tr>
+<td>–httpAddr</td>
+<td>:8080</td>
+<td></td>
+</tr>
+<tr>
+<td>–meshConfig</td>
+<td>“/etc/istio/config/mesh”</td>
+<td></td>
+</tr>
+<tr>
+<td>–registries</td>
+<td>Kubernetes</td>
+</tr>
+</tbody>
+</table>
+<h2 id="代码分析"><a href="#代码分析" class="headerlink" title="代码分析"></a>代码分析</h2><p>函数入口</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">discoveryCmd = &amp;cobra.Command&#123;</span><br><span class="line">	Use:   <span class="string">"discovery"</span>,</span><br><span class="line">	Short: <span class="string">"Start Istio proxy discovery service."</span>,</span><br><span class="line">	Args:  cobra.ExactArgs(<span class="number">0</span>),</span><br><span class="line">	RunE: <span class="function"><span class="keyword">func</span><span class="params">(c *cobra.Command, args []<span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">           <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">// Create the stop channel for all of the servers.</span></span><br><span class="line">		stop := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Create the server for the discovery service.</span></span><br><span class="line">		discoveryServer, err := bootstrap.NewServer(serverArgs)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> fmt.Errorf(<span class="string">"failed to create discovery service: %v"</span>, err)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Start the server</span></span><br><span class="line">		<span class="keyword">if</span> err := discoveryServer.Start(stop); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> fmt.Errorf(<span class="string">"failed to start discovery service: %v"</span>, err)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		cmd.WaitSignal(stop)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>istio.io/istio/pilot/pkg/bootstrap/server.go</p>
+<p>mesh 的默认配置参见：<a href="https://gist.github.com/DavadDi/f110459d339e260f818250287fc78ccc#file-mesh" target="_blank" rel="noopener">https://gist.github.com/DavadDi/f110459d339e260f818250287fc78ccc#file-mesh</a></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewServer creates a new Server instance based on the provided arguments.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewServer</span><span class="params">(args PilotArgs)</span> <span class="params">(*Server, error)</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">	s := &amp;Server&#123;</span><br><span class="line">		filewatcher: filewatcher.NewWatcher(),</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 省略错误处理</span></span><br><span class="line">	s.initKubeClient(&amp;args) <span class="comment">// 初始化到 k8s 集群的客户端 s.kubeClient</span></span><br><span class="line">	s.initMesh(&amp;args) <span class="comment">// 初始化配置，并添加到  filewatcher 中， /etc/istio/config/mesh</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 1.0.5 版本的 cmd 中未包括，应该是 1.1 中添加 </span></span><br><span class="line">    <span class="comment">// serverArgs.NetworksConfigFile, "networksConfig", "/etc/istio/config/meshNetworks"</span></span><br><span class="line">    <span class="comment">// 初始化配置，并加入到 filewatcher 中监听</span></span><br><span class="line">	s.initMeshNetworks(&amp;args)</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// initMixerSan configures the mixerSAN configuration item. </span></span><br><span class="line">    <span class="comment">// The mesh must already have been configured.</span></span><br><span class="line">	s.initMixerSan(&amp;args)</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// creates the config controller in the pilotConfig.</span></span><br><span class="line">    <span class="comment">// 最终会创建一个 crd.NewController 实例</span></span><br><span class="line">	s.initConfigController(&amp;args)</span><br><span class="line"> 	<span class="comment">/* 内部以 kube 为例，表明主要流程</span></span><br><span class="line"><span class="comment"> 		controller, err := s.makeKubeConfigController(args)</span></span><br><span class="line"><span class="comment">		s.configController = controller</span></span><br><span class="line"><span class="comment">	</span></span><br><span class="line"><span class="comment">		s.addStartFunc(func(stop &lt;-chan struct&#123;&#125;) error &#123;</span></span><br><span class="line"><span class="comment">			go s.configController.Run(stop)  // 1. 第一个启动的 configController</span></span><br><span class="line"><span class="comment">		&#125;)</span></span><br><span class="line"><span class="comment"> 	*/</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// creates and initializes the service controllers</span></span><br><span class="line">	s.initServiceControllers(&amp;args)</span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">       s.createK8sServiceControllers(serviceControllers, args)</span></span><br><span class="line"><span class="comment">       	--&gt; kube.NewController(s.kubeClient, args.Config.ControllerOptions)</span></span><br><span class="line"><span class="comment">       	</span></span><br><span class="line"><span class="comment">       	s.addStartFunc(func(stop &lt;-chan struct&#123;&#125;) error &#123;</span></span><br><span class="line"><span class="comment">		go s.ServiceController.Run(stop)  // 2. 第二个启动的 ServiceController</span></span><br><span class="line"><span class="comment">		return nil</span></span><br><span class="line"><span class="comment">	&#125;)</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 初始化 DiscoveryService gRPC 服务器，后面详细讲解</span></span><br><span class="line">    <span class="comment">// 添加2个 func 到 startFuncs 中</span></span><br><span class="line">	s.initDiscoveryService(&amp;args)</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// initializes the configuration for the pilot monitoring server.</span></span><br><span class="line">    <span class="comment">// 添加1个 func 到 startFuncs 中</span></span><br><span class="line">	s.initMonitor(&amp;args)</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// starts the secret controller to watch for remote</span></span><br><span class="line">	<span class="comment">// clusters and initialize the multicluster structures.</span></span><br><span class="line">    <span class="comment">// 暂时不分析</span></span><br><span class="line">	s.initClusterRegistries(&amp;args)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> s, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 将 NewServer 函数中初始化的函数依次启动起来</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *Server)</span> <span class="title">Start</span><span class="params">(stop &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// Now start all of the components.</span></span><br><span class="line">	<span class="keyword">for</span> _, fn := <span class="keyword">range</span> s.startFuncs &#123;</span><br><span class="line">		fn(stop)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>istio.io/api/mesh/v1alpha1/network.pb.go</p>
+<p>其中 MeshNetworks 结构体和定义说明如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// MeshNetworks (config map) provides information about the set of networks</span></span><br><span class="line"><span class="comment">// inside a mesh and how to route to endpoints in each network. For example</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// MeshNetworks(file/config map):</span></span><br><span class="line"><span class="comment">// networks:</span></span><br><span class="line"><span class="comment">// - network1:</span></span><br><span class="line"><span class="comment">//   - endpoints:</span></span><br><span class="line"><span class="comment">//     - fromRegistry: registry1 #must match secret name in kubernetes</span></span><br><span class="line"><span class="comment">//     - fromCidr: 192.168.100.0/22 #a VM network for example</span></span><br><span class="line"><span class="comment">//     gateways:</span></span><br><span class="line"><span class="comment">//     - registryServiceName: istio-ingressgateway.istio-system.svc.cluster.local</span></span><br><span class="line"><span class="comment">//       port: 15443</span></span><br><span class="line"><span class="comment">//       locality: us-east-1a</span></span><br><span class="line"><span class="keyword">type</span> MeshNetworks <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// REQUIRED: The set of networks inside this mesh. Each network should</span></span><br><span class="line">	<span class="comment">// have a unique name and information about how to infer the endpoints in</span></span><br><span class="line">	<span class="comment">// the network as well as the gateways associated with the network.</span></span><br><span class="line">	Networks <span class="keyword">map</span>[<span class="keyword">string</span>]*Network <span class="string">`protobuf:"bytes,1,rep,name=networks" json:"networks,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value"`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>经过对于 NewServer 函数的计划分析如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewServer</span><span class="params">(args PilotArgs)</span> <span class="params">(*Server, error)</span></span> &#123;</span><br><span class="line">    <span class="comment">// 省略错误处理</span></span><br><span class="line">	s.initKubeClient(&amp;args) <span class="comment">// 初始化到 k8s 集群的客户端 s.kubeClient</span></span><br><span class="line"></span><br><span class="line">   	<span class="comment">// 初始化相关配置，并监视配置的变化情况</span></span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// creates the config controller in the pilotConfig.</span></span><br><span class="line">    <span class="comment">// 最终会创建一个 crd.NewController 实例</span></span><br><span class="line">	s.initConfigController(&amp;args)</span><br><span class="line"> 	<span class="comment">// s.makeKubeConfigController(args)</span></span><br><span class="line">	<span class="comment">// s.configController.Run(stop)</span></span><br><span class="line"></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// creates and initializes the service controllers</span></span><br><span class="line">	s.initServiceControllers(&amp;args)</span><br><span class="line">    <span class="comment">// kube.NewController(s.kubeClient, args.Config.ControllerOptions)</span></span><br><span class="line">    <span class="comment">// go s.ServiceController.Run(stop)</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 初始化 DiscoveryService gRPC 服务器，后面详细讲解</span></span><br><span class="line">    <span class="comment">// 添加 2 个 func 到 startFuncs 中</span></span><br><span class="line">	s.initDiscoveryService(&amp;args)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> s, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="ConfigController"><a href="#ConfigController" class="headerlink" title="ConfigController"></a>ConfigController</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// initConfigController creates the config controller in the pilotConfig.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *Server)</span> <span class="title">initConfigController</span><span class="params">(args *PilotArgs)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// k8s 方式下初始化</span></span><br><span class="line">	controller, err := s.makeKubeConfigController(args)</span><br><span class="line">	s.configController = controller</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Defer starting the controller until after the service is created.</span></span><br><span class="line">	s.addStartFunc(<span class="function"><span class="keyword">func</span><span class="params">(stop &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">		<span class="keyword">go</span> s.configController.Run(stop)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;)</span><br><span class="line">	</span><br><span class="line">    <span class="comment">//...</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Create the config store.</span></span><br><span class="line">	s.istioConfigStore = model.MakeIstioStore(s.configController)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *Server)</span> <span class="title">makeKubeConfigController</span><span class="params">(args *PilotArgs)</span> <span class="params">(model.ConfigStoreCache, error)</span></span> &#123;</span><br><span class="line">	kubeCfgFile := s.getKubeCfgFile(args)</span><br><span class="line">	configClient, err := crd.NewClient(</span><br><span class="line">        kubeCfgFile, <span class="string">""</span>, </span><br><span class="line">        model.IstioConfigTypes, <span class="comment">// 全部相关的 CRD 定义</span></span><br><span class="line">        args.Config.ControllerOptions.DomainSuffix)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> !args.Config.DisableInstallCRDs &#123;</span><br><span class="line">        <span class="comment">// 注册自定义的 CRD</span></span><br><span class="line">		configClient.RegisterResources()</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> crd.NewController(configClient, args.Config.ControllerOptions), <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中 crd.NewClient 中的参数 model.IstioConfigTypes 包含了相关的全部 CRD 的定义:</p>
+<p>istio.io/istio/pilot/pkg/model/config.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// IstioConfigTypes lists all Istio config types with schemas and validation</span></span><br><span class="line">IstioConfigTypes = ConfigDescriptor&#123;</span><br><span class="line">	VirtualService,</span><br><span class="line">	Gateway,</span><br><span class="line">	ServiceEntry,</span><br><span class="line">	DestinationRule,</span><br><span class="line">	EnvoyFilter,</span><br><span class="line">	Sidecar,</span><br><span class="line">	HTTPAPISpec,</span><br><span class="line">	HTTPAPISpecBinding,</span><br><span class="line">	QuotaSpec,</span><br><span class="line">	QuotaSpecBinding,</span><br><span class="line">	AuthenticationPolicy,</span><br><span class="line">	AuthenticationMeshPolicy,</span><br><span class="line">	ServiceRole,</span><br><span class="line">	ServiceRoleBinding,</span><br><span class="line">	RbacConfig,</span><br><span class="line">	ClusterRbacConfig,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中 crd.NewController 定义在 istio.io/istio/pilot/pkg/config/kube/crd/controller.go 文件中：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewController creates a new Kubernetes controller for CRDs</span></span><br><span class="line"><span class="comment">// Use "" for namespace to listen for all namespace changes</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewController</span><span class="params">(client *Client, options kube.ControllerOptions)</span> <span class="title">model</span>.<span class="title">ConfigStoreCache</span></span> &#123;</span><br><span class="line">	log.Infof(<span class="string">"CRD controller watching namespaces %q"</span>, options.WatchedNamespace)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Queue requires a time duration for a retry delay after a handler error</span></span><br><span class="line">	out := &amp;controller&#123;</span><br><span class="line">		client: client,</span><br><span class="line">		queue:  kube.NewQueue(<span class="number">1</span> * time.Second),</span><br><span class="line">		kinds:  <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>]cacheHandler),</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// add stores for CRD kinds</span></span><br><span class="line">	<span class="keyword">for</span> _, schema := <span class="keyword">range</span> client.ConfigDescriptor() &#123;</span><br><span class="line">		out.addInformer(schema, options.WatchedNamespace, options.ResyncPeriod)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> out</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>对于 CRD 的监视，每一类资源需要启动一个单独的客户端连接，目前 CRD 的 Group 主要有 network/config/authentication/rbac 等；</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// controller is a collection of synchronized resource watchers.</span></span><br><span class="line"><span class="comment">// Caches are thread-safe</span></span><br><span class="line"><span class="keyword">type</span> controller <span class="keyword">struct</span> &#123;</span><br><span class="line">	client *Client  <span class="comment">// 每类资源一个连接</span></span><br><span class="line">	queue  kube.Queue</span><br><span class="line">	kinds  <span class="keyword">map</span>[<span class="keyword">string</span>]cacheHandler</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> cacheHandler <span class="keyword">struct</span> &#123;</span><br><span class="line">	informer cache.SharedIndexInformer</span><br><span class="line">	handler  *kube.ChainHandler</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Client is a basic REST client for CRDs implementing config store</span></span><br><span class="line"><span class="keyword">type</span> Client <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// Map of apiVersion to restClient.</span></span><br><span class="line">	clientset <span class="keyword">map</span>[<span class="keyword">string</span>]*restClient</span><br><span class="line"></span><br><span class="line">	<span class="comment">// domainSuffix for the config metadata</span></span><br><span class="line">	domainSuffix <span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="ServiceController"><a href="#ServiceController" class="headerlink" title="ServiceController"></a>ServiceController</h3><p>istio.io/istio/pilot/pkg/serviceregistry/kube/controller.go</p>
+<p>结构定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Controller <span class="keyword">struct</span> &#123;</span><br><span class="line">	domainSuffix <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	client    kubernetes.Interface</span><br><span class="line">	queue     Queue</span><br><span class="line">	services  cacheHandler</span><br><span class="line">	endpoints cacheHandler</span><br><span class="line">	nodes     cacheHandler</span><br><span class="line"></span><br><span class="line">	pods *PodCache</span><br><span class="line">	</span><br><span class="line">	<span class="comment">//....</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>NewController 函数定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewController creates a new Kubernetes controller</span></span><br><span class="line"><span class="comment">// Created by bootstrap and multicluster (see secretcontroler).</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewController</span><span class="params">(client kubernetes.Interface, options ControllerOptions)</span> *<span class="title">Controller</span></span> &#123;</span><br><span class="line">	log.Infof(<span class="string">"Service controller watching namespace %q for services, endpoints, nodes and pods, refresh %s"</span>,</span><br><span class="line">		options.WatchedNamespace, options.ResyncPeriod)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Queue requires a time duration for a retry delay after a handler error</span></span><br><span class="line">	out := &amp;Controller&#123;</span><br><span class="line">		domainSuffix:               options.DomainSuffix,</span><br><span class="line">		client:                     client,</span><br><span class="line">		queue:                      NewQueue(<span class="number">1</span> * time.Second),</span><br><span class="line">		ClusterID:                  options.ClusterID,</span><br><span class="line">		XDSUpdater:                 options.XDSUpdater,</span><br><span class="line">		servicesMap:                <span class="built_in">make</span>(<span class="keyword">map</span>[model.Hostname]*model.Service),</span><br><span class="line">		externalNameSvcInstanceMap: <span class="built_in">make</span>(<span class="keyword">map</span>[model.Hostname][]*model.ServiceInstance),</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	sharedInformers := informers.NewSharedInformerFactoryWithOptions(client, options.ResyncPeriod, informers.WithNamespace(options.WatchedNamespace))</span><br><span class="line"></span><br><span class="line">	svcInformer := sharedInformers.Core().V1().Services().Informer()</span><br><span class="line">	out.services = out.createCacheHandler(svcInformer, <span class="string">"Services"</span>)</span><br><span class="line"></span><br><span class="line">	epInformer := sharedInformers.Core().V1().Endpoints().Informer()</span><br><span class="line">	out.endpoints = out.createEDSCacheHandler(epInformer, <span class="string">"Endpoints"</span>)</span><br><span class="line"></span><br><span class="line">	nodeInformer := sharedInformers.Core().V1().Nodes().Informer()</span><br><span class="line">	out.nodes = out.createCacheHandler(nodeInformer, <span class="string">"Nodes"</span>)</span><br><span class="line"></span><br><span class="line">	podInformer := sharedInformers.Core().V1().Pods().Informer()</span><br><span class="line">	out.pods = newPodCache(out.createCacheHandler(podInformer, <span class="string">"Pod"</span>), out)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> out</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从上面代码可以很清晰看到，ServiceController 监听特定 namespace 下的以下资源：</p>
+<ol>
+<li>Services</li>
+<li>Endpoints</li>
+<li>Nodes</li>
+<li>Pod</li>
+</ol>
+<h3 id="ServiceDiscovery"><a href="#ServiceDiscovery" class="headerlink" title="ServiceDiscovery"></a>ServiceDiscovery</h3><p>istio.io/istio/pilot/pkg/bootstrap/server.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *Server)</span> <span class="title">initDiscoveryService</span><span class="params">(args *PilotArgs)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">    <span class="comment">// 需要注意 env 保存了后面使用的变量包括 </span></span><br><span class="line">    <span class="comment">// s.istioConfigStore  s.ServiceController s.ServiceController</span></span><br><span class="line">	environment := &amp;model.Environment&#123;</span><br><span class="line">		Mesh:             s.mesh,</span><br><span class="line">		MeshNetworks:     s.meshNetworks,</span><br><span class="line">		IstioConfigStore: s.istioConfigStore, <span class="comment">// istio routing rules</span></span><br><span class="line">		ServiceDiscovery: s.ServiceController, <span class="comment">// service list </span></span><br><span class="line">		ServiceAccounts:  s.ServiceController,</span><br><span class="line">		MixerSAN:         s.mixerSAN,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Set up discovery service</span></span><br><span class="line">	discovery, err := envoy.NewDiscoveryService(</span><br><span class="line">		environment,</span><br><span class="line">		args.DiscoveryOptions,</span><br><span class="line">	)</span><br><span class="line"></span><br><span class="line">	s.mux = discovery.RestContainer.ServeMux</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建  envoyv2.NewDiscoveryServer 对应的 gRPC Server</span></span><br><span class="line">	s.EnvoyXdsServer = envoyv2.NewDiscoveryServer(</span><br><span class="line">        environment,</span><br><span class="line">		istio_networking.NewConfigGenerator(args.Plugins),</span><br><span class="line">		s.ServiceController, </span><br><span class="line">        s.configController)</span><br><span class="line">    </span><br><span class="line">	s.EnvoyXdsServer.InitDebug(s.mux, s.ServiceController)</span><br><span class="line">	</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// create grpc/http server</span></span><br><span class="line">	s.initGrpcServer(args.KeepaliveOptions)</span><br><span class="line">	s.httpServer = &amp;http.Server&#123;</span><br><span class="line">		Addr:    args.DiscoveryOptions.HTTPAddr,</span><br><span class="line">		Handler: s.mux,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// create http listener</span></span><br><span class="line">	listener, err := net.Listen(<span class="string">"tcp"</span>, args.DiscoveryOptions.HTTPAddr)</span><br><span class="line">	s.HTTPListeningAddr = listener.Addr()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// create grpc listener</span></span><br><span class="line">	grpcListener, err := net.Listen(<span class="string">"tcp"</span>, args.DiscoveryOptions.GrpcAddr)</span><br><span class="line">	s.GRPCListeningAddr = grpcListener.Addr()</span><br><span class="line"></span><br><span class="line">	s.addStartFunc(<span class="function"><span class="keyword">func</span><span class="params">(stop &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">		<span class="comment">// 启动 http  server goroutine</span></span><br><span class="line">		<span class="comment">// 启动 gRPC server goroutine</span></span><br><span class="line">		<span class="comment">// 等待关闭 goroutine</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// run secure grpc server</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>istio.io/istio/pilot/pkg/proxy/envoy/v2/discovery.go，<code>envoyv2.NewDiscoveryServer</code> 函数定义：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 	s.EnvoyXdsServer = envoyv2.NewDiscoveryServer(</span></span><br><span class="line"><span class="comment">//        environment,</span></span><br><span class="line"><span class="comment">//		  istio_networking.NewConfigGenerator(args.Plugins),</span></span><br><span class="line"><span class="comment">//		  s.ServiceController, </span></span><br><span class="line"><span class="comment">//        s.configController)</span></span><br><span class="line"><span class="comment">// NewDiscoveryServer creates DiscoveryServer that sources data from Pilot's internal mesh data structures</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewDiscoveryServer</span><span class="params">(env *model.Environment, generator core.ConfigGenerator, ctl model.Controller, configCache model.ConfigStoreCache)</span> *<span class="title">DiscoveryServer</span></span> &#123;</span><br><span class="line">    <span class="comment">// 创建 DiscoveryServer 对象</span></span><br><span class="line">	out := &amp;DiscoveryServer&#123;</span><br><span class="line">		Env:                     env,</span><br><span class="line">		ConfigGenerator:         generator, <span class="comment">// generates xDS responses</span></span><br><span class="line">		ConfigController:        configCache,</span><br><span class="line">		EndpointShardsByService: <span class="keyword">map</span>[<span class="keyword">string</span>]*EndpointShards&#123;&#125;,</span><br><span class="line">		WorkloadsByID:           <span class="keyword">map</span>[<span class="keyword">string</span>]*Workload&#123;&#125;,</span><br><span class="line">		edsUpdates:              <span class="keyword">map</span>[<span class="keyword">string</span>]*EndpointShards&#123;&#125;,</span><br><span class="line">		concurrentPushLimit:     <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;, <span class="number">20</span>), </span><br><span class="line">		updateChannel:           <span class="built_in">make</span>(<span class="keyword">chan</span> *updateReq, <span class="number">10</span>),</span><br><span class="line">	&#125;</span><br><span class="line">	env.PushContext = model.NewPushContext()</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 处理相关的更新操作</span></span><br><span class="line">    <span class="comment">// handleUpdates处理来自 updateChannel 的事件它确保自上次事件处理之前至少已经过了minQuiet时间。</span></span><br><span class="line">    <span class="comment">// 它还确保在接收事件和处理事件之间最多经过 maxDelay。</span></span><br><span class="line">    <span class="comment">// 最后调用 doPush 函数进行推送，根据全量推送标记，将最近更新的 eds 相关信息通过 </span></span><br><span class="line">    <span class="comment">// XDS Incremental Push 或者 全量推送出去</span></span><br><span class="line">	<span class="keyword">go</span> out.handleUpdates()</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 以下三种清空 DiscoveryServer 的本地缓存，并注册清理缓存的函数</span></span><br><span class="line">    <span class="comment">// 1. service 相关的信息有变化的时候，</span></span><br><span class="line">    <span class="comment">// 2. jwt public key 发生变化</span></span><br><span class="line">    <span class="comment">// 3. Istio CRD 有变化的</span></span><br><span class="line">    <span class="comment">// 当以上三种任一情况发生的时候，会设置信息到 out.handleUpdates() 函数</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 周期性更新</span></span><br><span class="line">	<span class="keyword">go</span> out.periodicRefresh()</span><br><span class="line">	</span><br><span class="line">    <span class="comment">// 周期性更新 metrics</span></span><br><span class="line">	<span class="keyword">go</span> out.periodicRefreshMetrics()</span><br><span class="line"></span><br><span class="line">	out.DebugConfigs = pilot.DebugConfigs</span><br><span class="line"></span><br><span class="line">	pushThrottle := intEnv(pilot.PushThrottle, <span class="number">10</span>)</span><br><span class="line">	pushBurst := intEnv(pilot.PushBurst, <span class="number">100</span>)</span><br><span class="line"></span><br><span class="line">	adsLog.Infof(<span class="string">"Starting ADS server with rateLimiter=%d burst=%d"</span>, pushThrottle, pushBurst)</span><br><span class="line">	out.rateLimiter = rate.NewLimiter(rate.Limit(pushThrottle), pushBurst)</span><br><span class="line">	out.initRateLimiter = rate.NewLimiter(rate.Limit(pushThrottle*<span class="number">2</span>), pushBurst*<span class="number">2</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> out</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>ADS 相关定义：</p>
+<p><a href="https://github.com/envoyproxy/data-plane-api/blob/master/envoy/service/discovery/v2/ads.proto" target="_blank" rel="noopener">https://github.com/envoyproxy/data-plane-api/blob/master/envoy/service/discovery/v2/ads.proto</a></p>
+<figure class="highlight protobuf"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">// See https://github.com/lyft/envoy-api#apis for a description of the role of</span><br><span class="line">// ADS and how it is intended to be used by a management server. ADS requests</span><br><span class="line">// have the same structure as their singleton xDS counterparts, but can</span><br><span class="line">// multiplex many resource types on a single stream. The type_url in the</span><br><span class="line">// DiscoveryRequest/DiscoveryResponse provides sufficient information to recover</span><br><span class="line">// the multiplexed singleton APIs at the Envoy instance and management server.</span><br><span class="line">service AggregatedDiscoveryService &#123;</span><br><span class="line">  // This is a gRPC-only API.</span><br><span class="line">  rpc StreamAggregatedResources(stream envoy.api.v2.DiscoveryRequest)</span><br><span class="line">      returns (stream envoy.api.v2.DiscoveryResponse) &#123;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  rpc IncrementalAggregatedResources(stream envoy.api.v2.IncrementalDiscoveryRequest)</span><br><span class="line">      returns (stream envoy.api.v2.IncrementalDiscoveryResponse) &#123;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><a href="https://github.com/envoyproxy/data-plane-api/blob/master/envoy/api/v2/discovery.proto" target="_blank" rel="noopener">https://github.com/envoyproxy/data-plane-api/blob/master/envoy/api/v2/discovery.proto</a></p>
+<figure class="highlight protobuf"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br></pre></td><td class="code"><pre><span class="line">// A DiscoveryRequest requests a set of versioned resources of the same type for</span><br><span class="line">// a given Envoy node on some API.</span><br><span class="line">message DiscoveryRequest &#123;</span><br><span class="line">  // The version_info provided in the request messages will be the version_info</span><br><span class="line">  // received with the most recent successfully processed response or empty on</span><br><span class="line">  // the first request. It is expected that no new request is sent after a</span><br><span class="line">  // response is received until the Envoy instance is ready to ACK/NACK the new</span><br><span class="line">  // configuration. ACK/NACK takes place by returning the new API config version</span><br><span class="line">  // as applied or the previous API config version respectively. Each type_url</span><br><span class="line">  // (see below) has an independent version associated with it.</span><br><span class="line">  string version_info = 1;</span><br><span class="line"></span><br><span class="line">  // The node making the request.</span><br><span class="line">  core.Node node = 2;</span><br><span class="line"></span><br><span class="line">  // List of resources to subscribe to, e.g. list of cluster names or a route</span><br><span class="line">  // configuration name. If this is empty, all resources for the API are</span><br><span class="line">  // returned. LDS/CDS expect empty resource_names, since this is global</span><br><span class="line">  // discovery for the Envoy instance. The LDS and CDS responses will then imply</span><br><span class="line">  // a number of resources that need to be fetched via EDS/RDS, which will be</span><br><span class="line">  // explicitly enumerated in resource_names.</span><br><span class="line">  repeated string resource_names = 3;</span><br><span class="line"></span><br><span class="line">  // Type of the resource that is being requested, e.g.</span><br><span class="line">  // &quot;type.googleapis.com/envoy.api.v2.ClusterLoadAssignment&quot;. This is implicit</span><br><span class="line">  // in requests made via singleton xDS APIs such as CDS, LDS, etc. but is</span><br><span class="line">  // required for ADS.</span><br><span class="line">  string type_url = 4;</span><br><span class="line"></span><br><span class="line">  // nonce corresponding to DiscoveryResponse being ACK/NACKed. See above</span><br><span class="line">  // discussion on version_info and the DiscoveryResponse nonce comment. This</span><br><span class="line">  // may be empty if no nonce is available, e.g. at startup or for non-stream</span><br><span class="line">  // xDS implementations.</span><br><span class="line">  string response_nonce = 5;</span><br><span class="line"></span><br><span class="line">  // This is populated when the previous :ref:`DiscoveryResponse &lt;envoy_api_msg_DiscoveryResponse&gt;`</span><br><span class="line">  // failed to update configuration. The *message* field in *error_details* provides the Envoy</span><br><span class="line">  // internal exception related to the failure. It is only intended for consumption during manual</span><br><span class="line">  // debugging, the string provided is not guaranteed to be stable across Envoy versions.</span><br><span class="line">  google.rpc.Status error_detail = 6;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">message DiscoveryResponse &#123;</span><br><span class="line">  // The version of the response data.</span><br><span class="line">  string version_info = 1;</span><br><span class="line"></span><br><span class="line">  // The response resources. These resources are typed and depend on the API being called.</span><br><span class="line">  repeated google.protobuf.Any resources = 2 [(gogoproto.nullable) = false];</span><br><span class="line"></span><br><span class="line">  // [#not-implemented-hide:]</span><br><span class="line">  // Canary is used to support two Envoy command line flags:</span><br><span class="line">  //</span><br><span class="line">  // * --terminate-on-canary-transition-failure. When set, Envoy is able to</span><br><span class="line">  //   terminate if it detects that configuration is stuck at canary. Consider</span><br><span class="line">  //   this example sequence of updates:</span><br><span class="line">  //   - Management server applies a canary config successfully.</span><br><span class="line">  //   - Management server rolls back to a production config.</span><br><span class="line">  //   - Envoy rejects the new production config.</span><br><span class="line">  //   Since there is no sensible way to continue receiving configuration</span><br><span class="line">  //   updates, Envoy will then terminate and apply production config from a</span><br><span class="line">  //   clean slate.</span><br><span class="line">  // * --dry-run-canary. When set, a canary response will never be applied, only</span><br><span class="line">  //   validated via a dry run.</span><br><span class="line">  bool canary = 3;</span><br><span class="line"></span><br><span class="line">  // Type URL for resources. This must be consistent with the type_url in the</span><br><span class="line">  // Any messages for resources if resources is non-empty. This effectively</span><br><span class="line">  // identifies the xDS API when muxing over ADS.</span><br><span class="line">  string type_url = 4;</span><br><span class="line"></span><br><span class="line">  // For gRPC based subscriptions, the nonce provides a way to explicitly ack a</span><br><span class="line">  // specific DiscoveryResponse in a following DiscoveryRequest. Additional</span><br><span class="line">  // messages may have been sent by Envoy to the management server for the</span><br><span class="line">  // previous version on the stream prior to this DiscoveryResponse, that were</span><br><span class="line">  // unprocessed at response send time. The nonce allows the management server</span><br><span class="line">  // to ignore any further DiscoveryRequests for the previous version until a</span><br><span class="line">  // DiscoveryRequest bearing the nonce. The nonce is optional and is not</span><br><span class="line">  // required for non-stream based xDS implementations.</span><br><span class="line">  string nonce = 5;</span><br><span class="line"></span><br><span class="line">  // [#not-implemented-hide:]</span><br><span class="line">  // The control plane instance that sent the response.</span><br><span class="line">  core.ControlPlane control_plane = 6;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>关于 ADS 保证一致性的内容参见：<a href="https://www.do1618.com/archives/1474/envoy-%E7%9A%84-xds-rest-%E5%92%8C-grpc-%E5%8D%8F%E8%AE%AE%E8%AF%A6%E8%A7%A3-%EF%BC%88%E8%AF%91%EF%BC%89/" target="_blank" rel="noopener">envoy-的-xds-rest-和-grpc-协议详解</a> 中的 ”最终一致性考虑“  章节：</p>
+<blockquote>
+<p>一般来说，为避免流量丢弃，更新的顺序应该遵循 make before break 模型，其中</p>
+<ul>
+<li>必须始终先推送 CDS 更新（如果有）。</li>
+<li>EDS 更新（如果有）必须在相应集群的 CDS 更新后到达。</li>
+<li>LDS 更新必须在相应的 CDS/EDS 更新后到达。</li>
+<li>与新添加的监听器相关的 RDS 更新必须在最后到达。</li>
+<li>最后，删除过期的 CDS 集群和相关的 EDS 端点（不再被引用的端点）。</li>
+</ul>
+<p>ADS 允许单一管理服务器通过单个 gRPC 流，提供所有的 API 更新。配合仔细规划的更新顺序，ADS 可规避更新过程中流量丢失。</p>
+</blockquote>
+<p>pilot/pkg/proxy/envoy/v2/ads.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// StreamAggregatedResources implements the ADS interface.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">StreamAggregatedResources</span><span class="params">(stream ads.AggregatedDiscoveryService_StreamAggregatedResourcesServer)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">    </span><br><span class="line">	<span class="comment">// InitContext returns immediately if the context was already initialized.</span></span><br><span class="line">    <span class="comment">// InitContext 从 env 从取出需要发送到客户端的数据，后续会继续分析</span></span><br><span class="line">    <span class="comment">// 1. initServiceRegistry</span></span><br><span class="line">    <span class="comment">// 2. initVirtualServices</span></span><br><span class="line">    <span class="comment">// 3. initDestinationRules</span></span><br><span class="line">    <span class="comment">// 4. initAuthorizationPolicies</span></span><br><span class="line">    <span class="comment">// 5. InitSidecarScopes</span></span><br><span class="line">	err := s.globalPushContext().InitContext(s.Env)</span><br><span class="line">	con := newXdsConnection(peerAddr, stream)</span><br><span class="line"></span><br><span class="line">	reqChannel := <span class="built_in">make</span>(<span class="keyword">chan</span> *xdsapi.DiscoveryRequest, <span class="number">1</span>)</span><br><span class="line">    <span class="comment">// 启动一个新的 goroutine 来从客户端接受相关的数据 xdsapi.DiscoveryRequest</span></span><br><span class="line">	<span class="keyword">go</span> receiveThread(con, reqChannel, &amp;receiveError)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="comment">// Block until either a request is received or a push is triggered.</span></span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> discReq, ok := &lt;-reqChannel:</span><br><span class="line">			  err = s.initConnectionNode(discReq, con)</span><br><span class="line"></span><br><span class="line">			<span class="keyword">switch</span> discReq.TypeUrl &#123;</span><br><span class="line">			<span class="keyword">case</span> ClusterType:</span><br><span class="line">                <span class="comment">// ...</span></span><br><span class="line">				<span class="comment">// CDS REQ is the first request an envoy makes. This shows up</span></span><br><span class="line">				<span class="comment">// immediately after connect. It is followed by EDS REQ as</span></span><br><span class="line">				<span class="comment">// soon as the CDS push is returned.</span></span><br><span class="line">				adsLog.Infof(<span class="string">"ADS:CDS: REQ %v %s %v raw: %s"</span>, peerAddr, con.ConID, time.Since(t0), discReq.String())</span><br><span class="line">				con.CDSWatch = <span class="literal">true</span></span><br><span class="line">				err := s.pushCds(con, s.globalPushContext(), versionInfo())</span><br><span class="line">                </span><br><span class="line">			<span class="keyword">case</span> ListenerType:</span><br><span class="line">				<span class="comment">// ...</span></span><br><span class="line">				adsLog.Debugf(<span class="string">"ADS:LDS: REQ %s %v"</span>, con.ConID, peerAddr)</span><br><span class="line">				con.LDSWatch = <span class="literal">true</span></span><br><span class="line">				err := s.pushLds(con, s.globalPushContext(), <span class="literal">true</span>, versionInfo())</span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> RouteType:</span><br><span class="line">				<span class="comment">// ...</span></span><br><span class="line">				adsLog.Debugf(<span class="string">"ADS:RDS: REQ %s %s  routes: %d"</span>, peerAddr, con.ConID, <span class="built_in">len</span>(con.Routes))</span><br><span class="line">				err := s.pushRoute(con, s.globalPushContext())</span><br><span class="line">                </span><br><span class="line">			<span class="keyword">case</span> EndpointType:</span><br><span class="line">				<span class="comment">// ...</span></span><br><span class="line">				<span class="comment">// 各种错误处理</span></span><br><span class="line"></span><br><span class="line">				<span class="keyword">for</span> _, cn := <span class="keyword">range</span> con.Clusters &#123;</span><br><span class="line">					s.removeEdsCon(cn, con.ConID, con)</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				<span class="keyword">for</span> _, cn := <span class="keyword">range</span> clusters &#123;</span><br><span class="line">					s.addEdsCon(cn, con.ConID, con)</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				con.Clusters = clusters</span><br><span class="line">				adsLog.Debugf(<span class="string">"ADS:EDS: REQ %s %s clusters: %d"</span>, peerAddr, con.ConID, <span class="built_in">len</span>(con.Clusters))</span><br><span class="line">				err := s.pushEds(s.globalPushContext(), con, <span class="literal">true</span>, <span class="literal">nil</span>)</span><br><span class="line">				<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">					<span class="keyword">return</span> err</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">default</span>:</span><br><span class="line">				adsLog.Warnf(<span class="string">"ADS: Unknown watched resources %s"</span>, discReq.String())</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">// ...</span></span><br><span class="line">		<span class="keyword">case</span> pushEv := &lt;-con.pushChannel:</span><br><span class="line">			<span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">			err := s.pushConnection(con, pushEv)</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>istio.io/istio/pilot/pkg/model/push_context.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// PushContext tracks the status of a push - metrics and errors.</span></span><br><span class="line"><span class="comment">// Metrics are reset after a push - at the beginning all</span></span><br><span class="line"><span class="comment">// values are zero, and when push completes the status is reset.</span></span><br><span class="line"><span class="comment">// The struct is exposed in a debug endpoint - fields public to allow</span></span><br><span class="line"><span class="comment">// easy serialization as json.</span></span><br><span class="line"><span class="keyword">type</span> PushContext <span class="keyword">struct</span> &#123;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// privateServices are reachable within the same namespace.</span></span><br><span class="line">	privateServicesByNamespace <span class="keyword">map</span>[<span class="keyword">string</span>][]*Service</span><br><span class="line">	<span class="comment">// publicServices are services reachable within the mesh.</span></span><br><span class="line">	publicServices []*Service</span><br><span class="line"></span><br><span class="line">	privateVirtualServicesByNamespace <span class="keyword">map</span>[<span class="keyword">string</span>][]Config</span><br><span class="line">	publicVirtualServices             []Config</span><br><span class="line"></span><br><span class="line">	<span class="comment">// destination rules are of three types:</span></span><br><span class="line">	<span class="comment">// namespaceLocalDestRules: all public/private dest rules pertaining to a service defined in a given namespace</span></span><br><span class="line">	<span class="comment">//  namespaceExportedDestRules: all public dest rules pertaining to a service defined in a namespace</span></span><br><span class="line">	<span class="comment">//  allExportedDestRules: all (public) dest rules across all namespaces</span></span><br><span class="line">	<span class="comment">// We need the allExportedDestRules in addition to namespaceExportedDestRules because we select</span></span><br><span class="line">	<span class="comment">// the dest rule based on the most specific host match, and not just any destination rule</span></span><br><span class="line">	namespaceLocalDestRules    <span class="keyword">map</span>[<span class="keyword">string</span>]*processedDestRules</span><br><span class="line">	namespaceExportedDestRules <span class="keyword">map</span>[<span class="keyword">string</span>]*processedDestRules</span><br><span class="line">	allExportedDestRules       *processedDestRules</span><br><span class="line"></span><br><span class="line">	<span class="comment">// sidecars for each namespace</span></span><br><span class="line">	sidecarsByNamespace <span class="keyword">map</span>[<span class="keyword">string</span>][]*SidecarScope</span><br><span class="line">	<span class="comment">////////// END ////////</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// The following data is either a global index or used in the inbound path.</span></span><br><span class="line">	<span class="comment">// Namespace specific views do not apply here.</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// ServiceByHostname has all services, indexed by hostname.</span></span><br><span class="line">	ServiceByHostname <span class="keyword">map</span>[Hostname]*Service <span class="string">`json:"-"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// AuthzPolicies stores the existing authorization policies in the cluster. Could be nil if there</span></span><br><span class="line">	<span class="comment">// are no authorization policies in the cluster.</span></span><br><span class="line">	AuthzPolicies *AuthorizationPolicies <span class="string">`json:"-"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// ServicePort2Name is used to keep track of service name and port mapping.</span></span><br><span class="line">	<span class="comment">// This is needed because ADS names use port numbers, while endpoints use</span></span><br><span class="line">	<span class="comment">// port names. The key is the service name. If a service or port are not found,</span></span><br><span class="line">	<span class="comment">// the endpoint needs to be re-evaluated later (eventual consistency)</span></span><br><span class="line">	ServicePort2Name <span class="keyword">map</span>[<span class="keyword">string</span>]PortList <span class="string">`json:"-"`</span></span><br><span class="line"></span><br><span class="line">	initDone <span class="keyword">bool</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">// InitContext will initialize the data structures used for code generation.</span></span><br><span class="line"><span class="comment">// This should be called before starting the push, from the thread creating</span></span><br><span class="line"><span class="comment">// the push context.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ps *PushContext)</span> <span class="title">InitContext</span><span class="params">(env *Environment)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	ps.Mutex.Lock()</span><br><span class="line">	<span class="keyword">defer</span> ps.Mutex.Unlock()</span><br><span class="line">	<span class="keyword">if</span> ps.initDone &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">	ps.Env = env</span><br><span class="line">	<span class="keyword">var</span> err error</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Caches list of services in the registry, and creates a map</span></span><br><span class="line">    <span class="comment">// of hostname to service -&gt; ServicePort2Name map[string]PortList `json:"-"`</span></span><br><span class="line">	ps.initServiceRegistry(env)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Caches list of virtual services -&gt; publicVirtualServices []Config</span></span><br><span class="line">	ps.initVirtualServices(env)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Split out of DestinationRule expensive conversions - once per push.</span></span><br><span class="line">    <span class="comment">// 最后保存到以下三个变量中：</span></span><br><span class="line">    <span class="comment">// 	* namespaceLocalDestRules    map[string]*processedDestRules</span></span><br><span class="line">	<span class="comment">//  * namespaceExportedDestRules map[string]*processedDestRules</span></span><br><span class="line">	<span class="comment">//  * allExportedDestRules       *processedDestRules</span></span><br><span class="line">	ps.initDestinationRules(env)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Get the ClusterRbacConfig -&gt; AuthzPolicies *AuthorizationPolicies</span></span><br><span class="line">	ps.initAuthorizationPolicies(env)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Must be initialized in the end -&gt; sidecarsByNamespace map[string][]*SidecarScope</span></span><br><span class="line">	ps.InitSidecarScopes(env)</span><br><span class="line"></span><br><span class="line">	ps.initDone = <span class="literal">true</span></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>CDS 为 ADS 中第一个发送的信息，后续我们以  CDS 为例进行详细分析</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// StreamAggregatedResources implements the ADS interface.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">StreamAggregatedResources</span><span class="params">(stream ads.AggregatedDiscoveryService_StreamAggregatedResourcesServer)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">    </span><br><span class="line">	<span class="comment">// InitContext returns immediately if the context was already initialized.</span></span><br><span class="line">    <span class="comment">// InitContext 从 env 从取出需要发送到客户端的数据，后续会继续分析</span></span><br><span class="line">    <span class="comment">// 1. initServiceRegistry</span></span><br><span class="line">    <span class="comment">// 2. initVirtualServices</span></span><br><span class="line">    <span class="comment">// 3. initDestinationRules</span></span><br><span class="line">    <span class="comment">// 4. initAuthorizationPolicies</span></span><br><span class="line">    <span class="comment">// 5. InitSidecarScopes</span></span><br><span class="line">	err := s.globalPushContext().InitContext(s.Env)</span><br><span class="line">	con := newXdsConnection(peerAddr, stream)</span><br><span class="line"></span><br><span class="line">	reqChannel := <span class="built_in">make</span>(<span class="keyword">chan</span> *xdsapi.DiscoveryRequest, <span class="number">1</span>)</span><br><span class="line">    <span class="comment">// 启动一个新的 goroutine 来从客户端接受相关的数据 xdsapi.DiscoveryRequest</span></span><br><span class="line">	<span class="keyword">go</span> receiveThread(con, reqChannel, &amp;receiveError)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="comment">// Block until either a request is received or a push is triggered.</span></span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> discReq, ok := &lt;-reqChannel:</span><br><span class="line">            <span class="comment">// 主要是调用 `ParseServiceNodeWithMetadata` 函数，</span></span><br><span class="line">            <span class="comment">// 从 Req 的消息中获取到各种信息，并生产 `Proxy` 对象</span></span><br><span class="line">            <span class="comment">// 当前 discReq.Node.Id 格式为 Type~IPAddress~ID~Domain</span></span><br><span class="line">			err = s.initConnectionNode(discReq, con)</span><br><span class="line">            </span><br><span class="line">			<span class="keyword">switch</span> discReq.TypeUrl &#123;</span><br><span class="line">			<span class="keyword">case</span> ClusterType:</span><br><span class="line">                <span class="comment">// 如果已经发送过 CS 数据后的响应消息的处理</span></span><br><span class="line">				<span class="keyword">if</span> con.CDSWatch &#123;</span><br><span class="line">					<span class="comment">// ...</span></span><br><span class="line">				&#125;</span><br><span class="line">				<span class="comment">// CDS REQ is the first request an envoy makes. This shows up</span></span><br><span class="line">				<span class="comment">// immediately after connect. It is followed by EDS REQ as</span></span><br><span class="line">				<span class="comment">// soon as the CDS push is returned.</span></span><br><span class="line">				adsLog.Infof(<span class="string">"ADS:CDS: REQ %v %s %v raw: %s"</span>, peerAddr, con.ConID, time.Since(t0), discReq.String())</span><br><span class="line">				con.CDSWatch = <span class="literal">true</span></span><br><span class="line">				err := s.pushCds(con, s.globalPushContext(), versionInfo())</span><br><span class="line">				<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">					<span class="keyword">return</span> err</span><br><span class="line">				&#125;</span><br><span class="line">				</span><br><span class="line">				<span class="comment">//...</span></span><br><span class="line">	&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="core-Node"><a href="#core-Node" class="headerlink" title="core.Node"></a><a href="https://www.envoyproxy.io/docs/envoy/latest/api-v2/api/v2/core/base.proto#envoy-api-msg-core-node" target="_blank" rel="noopener">core.Node</a></h4><blockquote>
+<p>Identifies a specific Envoy instance. The node identifier is presented to the management server, which may use this identifier to distinguish per Envoy configuration for serving.{<br>  “id”: “…”,<br>  “cluster”: “…”,<br>  “metadata”: “{…}”,<br>  “locality”: “{…}”,<br>  “build_version”: “…”<br>}</p>
+<p><strong>id</strong><br>(string) An opaque node identifier for the Envoy node. This also provides the local service node name. It should be set if any of the following features are used: statsd, CDS, and HTTP tracing, either in this message or via –service-node.</p>
+<p><strong>cluster</strong><br>(string) Defines the local service cluster name where Envoy is running. Though optional, it should be set if any of the following features are used: statsd, health check cluster verification, runtime override directory, user agent addition, HTTP global rate limiting, CDS, and HTTP tracing, either in this message or via –service-cluster.</p>
+<p><strong>metadata</strong><br>(Struct) Opaque metadata extending the node identifier. Envoy will pass this directly to the management server.</p>
+<p><strong>locality</strong><br>(core.Locality) Locality specifying where the Envoy instance is running.</p>
+<p><strong>build_version</strong><br>(string) This is motivated by informing a management server during canary which version of Envoy is being tested in a heterogeneous fleet. This will be set by Envoy in management server RPCs.</p>
+</blockquote>
+<p>在 <code>initConnectionNode</code> 函数中，主要是调用 <code>ParseServiceNodeWithMetadata</code> 函数，从 Req 的消息中获取到各种信息，并生产 <code>Proxy</code> 对象；</p>
+<p>istio.io/istio/pilot/pkg/model/context.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">ParseServiceNodeWithMetadata</span><span class="params">(s <span class="keyword">string</span>, metadata <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">string</span>)</span> <span class="params">(*Proxy, error)</span></span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Proxy contains information about an specific instance of a proxy (envoy sidecar, gateway,</span></span><br><span class="line"><span class="comment">// etc). The Proxy is initialized when a sidecar connects to Pilot, and populated from</span></span><br><span class="line"><span class="comment">// 'node' info in the protocol as well as data extracted from registries.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// In current Istio implementation nodes use a 4-parts '~' delimited ID.</span></span><br><span class="line"><span class="comment">// Type~IPAddress~ID~Domain</span></span><br><span class="line"><span class="keyword">type</span> Proxy <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// ClusterID specifies the cluster where the proxy resides.</span></span><br><span class="line">	<span class="comment">// <span class="doctag">TODO:</span> clarify if this is needed in the new 'network' model, likely needs to</span></span><br><span class="line">	<span class="comment">// be renamed to 'network'</span></span><br><span class="line">	ClusterID <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Type specifies the node type. First part of the ID.</span></span><br><span class="line">	Type NodeType</span><br><span class="line"></span><br><span class="line">	<span class="comment">// IPAddresses is the IP addresses of the proxy used to identify it and its</span></span><br><span class="line">	<span class="comment">// co-located service instances. Example: "10.60.1.6". In some cases, the host</span></span><br><span class="line">	<span class="comment">// where the poxy and service instances reside may have more than one IP address</span></span><br><span class="line">	IPAddresses []<span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// ID is the unique platform-specific sidecar proxy ID. For k8s it is the pod ID and</span></span><br><span class="line">	<span class="comment">// namespace.</span></span><br><span class="line">	ID <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Locality is the location of where Envoy proxy runs.</span></span><br><span class="line">	Locality Locality</span><br><span class="line"></span><br><span class="line">	<span class="comment">// DNSDomain defines the DNS domain suffix for short hostnames (e.g.</span></span><br><span class="line">	<span class="comment">// "default.svc.cluster.local")</span></span><br><span class="line">	DNSDomain <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// TrustDomain defines the trust domain of the certificate</span></span><br><span class="line">	TrustDomain <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// ConfigNamespace defines the namespace where this proxy resides</span></span><br><span class="line">	<span class="comment">// for the purposes of network scoping.</span></span><br><span class="line">	<span class="comment">// <span class="doctag">NOTE:</span> DO NOT USE THIS FIELD TO CONSTRUCT DNS NAMES</span></span><br><span class="line">	ConfigNamespace <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Metadata key-value pairs extending the Node identifier</span></span><br><span class="line">	Metadata <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// the sidecarScope associated with the proxy</span></span><br><span class="line">	SidecarScope *SidecarScope</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>推送 CDS 的核心实现通过函数 <code>s.pushCds(con, s.globalPushContext(), versionInfo())</code></p>
+<p>istio.io/istio/pilot/pkg/proxy/envoy/v2/cds.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">pushCds</span><span class="params">(con *XdsConnection, push *model.PushContext, version <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">    <span class="comment">// 通过当前的 con.modelNode 和 push 的上下文生成对应的 rawClusters 对象 []*xdsapi.Cluster</span></span><br><span class="line">	rawClusters, err := s.generateRawClusters(con.modelNode, push)</span><br><span class="line"></span><br><span class="line">	response := con.clusters(rawClusters)</span><br><span class="line">	err = con.send(response)</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因此 <code>s.generateRawClusters(con.modelNode, push)</code> 的作用不言而喻，就是将  <code>push</code> 上下文中与 CDS  相关的数据整理并封装成 CDS  Reponse 的格式。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">generateRawClusters</span><span class="params">(node *model.Proxy, push *model.PushContext)</span> <span class="params">([]*xdsapi.Cluster, error)</span></span> &#123;</span><br><span class="line">	rawClusters, err := s.ConfigGenerator.BuildClusters(s.Env, node, push)</span><br><span class="line">	</span><br><span class="line">  	<span class="comment">// 对 rawClusters 中的信息进行 Validate 验证</span></span><br><span class="line">	<span class="keyword">return</span> rawClusters, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>对象 <code>rawClusters</code> 是通过 <code>s.ConfigGenerator.BuildClusters</code> 函数基于  <code>s.Env, node, push</code> 三者的信息组合而生成出来的：</p>
+<ul>
+<li><p>s.Env 保存了 ServiceController 和 ConfigController 等资源的本地缓存信息</p>
+</li>
+<li><p>node 为本次 Req 请求中生成的包含 Node 相关信息的对象</p>
+</li>
+<li><p>push 为本次推送的上下文，已经将本次推送过程中需要的信息完成了初步的整理（从 s.Env 中生成出来的）</p>
+</li>
+</ul>
+<p>istio.io/istio/pilot/pkg/networking/core/v1alpha3/cluster.go</p>
+<p>BuildClusters 函数的实现如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// BuildClusters returns the list of clusters for the given proxy. This is the CDS output</span></span><br><span class="line"><span class="comment">// For outbound: Cluster for each service/subset hostname or cidr with SNI set to service hostname</span></span><br><span class="line"><span class="comment">// Cluster type based on resolution</span></span><br><span class="line"><span class="comment">// For inbound (sidecar only): Cluster for each inbound endpoint port and for each service port</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(configgen *ConfigGeneratorImpl)</span> <span class="title">BuildClusters</span><span class="params">(env *model.Environment, proxy *model.Proxy, push *model.PushContext)</span> <span class="params">([]*apiv2.Cluster, error)</span></span> &#123;</span><br><span class="line">	clusters := <span class="built_in">make</span>([]*apiv2.Cluster, <span class="number">0</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> proxy.Type &#123;</span><br><span class="line">	<span class="keyword">case</span> model.SidecarProxy:</span><br><span class="line">        <span class="comment">// GetProxyServiceInstances returns service instances co-located with the proxy</span></span><br><span class="line">        <span class="comment">// 获取与 proxy 所在主机上的 service instance，包括 headless 服务</span></span><br><span class="line">		instances, err := env.GetProxyServiceInstances(proxy)</span><br><span class="line"></span><br><span class="line">		sidecarScope := proxy.SidecarScope</span><br><span class="line">		recomputeOutboundClusters := <span class="literal">true</span></span><br><span class="line">        <span class="comment">// 追加 OutboundClusters</span></span><br><span class="line">		<span class="keyword">if</span> recomputeOutboundClusters &#123;</span><br><span class="line">			clusters = <span class="built_in">append</span>(clusters, configgen.buildOutboundClusters(env, proxy, push)...)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Let ServiceDiscovery decide which IP and Port are used for management if</span></span><br><span class="line">		<span class="comment">// there are multiple IPs</span></span><br><span class="line">		managementPorts := <span class="built_in">make</span>([]*model.Port, <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">for</span> _, ip := <span class="keyword">range</span> proxy.IPAddresses &#123;</span><br><span class="line">			managementPorts = <span class="built_in">append</span>(managementPorts, env.ManagementPorts(ip)...)</span><br><span class="line">		&#125;</span><br><span class="line">        </span><br><span class="line">        <span class="comment">// 追加与 proxy ip 上 managementPorts 相关的 InboundClusters</span></span><br><span class="line">		clusters = <span class="built_in">append</span>(clusters, configgen.buildInboundClusters(env, proxy, push, instances, managementPorts)...)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">default</span>: <span class="comment">// Gateways</span></span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Add a blackhole and passthrough cluster for catching traffic to unresolved routes</span></span><br><span class="line">	<span class="comment">// DO NOT CALL PLUGINS for these two clusters.</span></span><br><span class="line">	clusters = <span class="built_in">append</span>(clusters, buildBlackHoleCluster())</span><br><span class="line">	clusters = <span class="built_in">append</span>(clusters, buildDefaultPassthroughCluster())</span><br><span class="line"></span><br><span class="line">    <span class="comment">// resolves cluster name conflicts. </span></span><br><span class="line">	<span class="keyword">return</span> normalizeClusters(push, proxy, clusters), <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>临时的调试方法：</p>
+<p>istio.io/istio/pilot/pkg/proxy/envoy/v2/debug.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// InitDebug initializes the debug handlers and adds a debug in-memory registry.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *DiscoveryServer)</span> <span class="title">InitDebug</span><span class="params">(mux *http.ServeMux, sctl *aggregate.Controller)</span></span> &#123;</span><br><span class="line">	<span class="comment">// For debugging and load testing v2 we add an memory registry.</span></span><br><span class="line">	s.MemRegistry = NewMemServiceDiscovery(</span><br><span class="line">		<span class="keyword">map</span>[model.Hostname]*model.Service&#123; <span class="comment">// mock.HelloService.Hostname: mock.HelloService,</span></span><br><span class="line">		&#125;, <span class="number">2</span>)</span><br><span class="line">	s.MemRegistry.EDSUpdater = s</span><br><span class="line">	s.MemRegistry.ClusterID = <span class="string">"v2-debug"</span></span><br><span class="line"></span><br><span class="line">	sctl.AddRegistry(aggregate.Registry&#123;</span><br><span class="line">		ClusterID:        <span class="string">"v2-debug"</span>,</span><br><span class="line">		Name:             serviceregistry.ServiceRegistry(<span class="string">"memAdapter"</span>),</span><br><span class="line">		ServiceDiscovery: s.MemRegistry,</span><br><span class="line">		ServiceAccounts:  s.MemRegistry,</span><br><span class="line">		Controller:       s.MemRegistry.controller,</span><br><span class="line">	&#125;)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/ready"</span>, s.ready)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/edsz"</span>, s.edsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/adsz"</span>, s.adsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/cdsz"</span>, cdsz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/syncz"</span>, Syncz)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/registryz"</span>, s.registryz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/endpointz"</span>, s.endpointz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/endpointShardz"</span>, s.endpointShardz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/workloadz"</span>, s.workloadz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/configz"</span>, s.configz)</span><br><span class="line"></span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/authenticationz"</span>, s.authenticationz)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/config_dump"</span>, s.ConfigDump)</span><br><span class="line">	mux.HandleFunc(<span class="string">"/debug/push_status"</span>, s.PushStatusHandler)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2019/02/06/istio-citadel/" title="istio" citadel="" 源码分析="">
+                    <div class="prevTitle">istio citadel 源码分析</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2019/02/08/istio-pilot/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "istio pilot-discovery 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#架构"><span class="toc-number">1.</span> <span class="toc-text">架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#介绍"><span class="toc-number">2.</span> <span class="toc-text">介绍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#代码分析"><span class="toc-number">3.</span> <span class="toc-text">代码分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#ConfigController"><span class="toc-number">3.1.</span> <span class="toc-text">ConfigController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceController"><span class="toc-number">3.2.</span> <span class="toc-text">ServiceController</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ServiceDiscovery"><span class="toc-number">3.3.</span> <span class="toc-text">ServiceDiscovery</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#core-Node"><span class="toc-number">3.3.1.</span> <span class="toc-text">core.Node</span></a></li></ol></li></ol></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

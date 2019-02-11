@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>为 Kubernetes 选择合适的 container runtime（译） · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">为 Kubernetes 选择合适的 container runtime（译）</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            为 Kubernetes 选择合适的 container runtime（译）
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="container">container</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="runtime">runtime</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/09/29</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>原文地址：<a href="https://joejulian.name/post/kubernetes-container-engine-comparison" target="_blank" rel="noopener">https://joejulian.name/post/kubernetes-container-engine-comparison</a><br>作者：Joe Julian<br>翻译：狄卫华<br>发表时间： 2018/3/23</p>
+<p>Kubelet 可通过配置项 <code>container-runtime</code>，<code>container-runtime-endpoint</code> 和 <code>image-service-endpoint</code> 来选择使用 docker，rkt（不建议使用）或任何 CRI API 兼容的 <code>container-runtime</code> 。</p>
+<h2 id="意见"><a href="#意见" class="headerlink" title="意见"></a>意见</h2><p>虽然基于虚拟机的机制提供了额外的安全隔离，但资源限制太多，需要较多的开销才能将软件在生产环境上部署使用，但是为了方案的完整性，本文也涵盖其相关的实现，但在整体解决方案章节将不再完整描述或分析。</p>
+<h2 id="Kubernetes-接口"><a href="#Kubernetes-接口" class="headerlink" title="Kubernetes 接口"></a>Kubernetes 接口</h2><h3 id="Native"><a href="#Native" class="headerlink" title="Native"></a>Native</h3><h4 id="Docker"><a href="#Docker" class="headerlink" title="Docker"></a>Docker</h4><p>Docker 是迄今为止最常用的容器引擎，主要得益于其容器仓库和社区。Docker 是 dockerd 、containerd、containerd-shim 和 runc 的组合，其中 runc 作为 <code>container-runtime</code>。 由于 kubernetes 移除对于 <code>container-runtime</code> 的直接和非 CRI 接口的支持，因此 Native 支持的方式的后续将会被移除。</p>
+<h4 id="rktnetes"><a href="#rktnetes" class="headerlink" title="rktnetes"></a>rktnetes</h4><p>截至 kubernetes 1.10.0，直接集成 rkt（或 rktnetes）支持已被弃用。</p>
+<h3 id="CRI"><a href="#CRI" class="headerlink" title="CRI"></a>CRI</h3><p>容器运行时接口（CRI）的出现是因为 CoreOS 想要为 kubernetes 添加 rkt 支持。Kubernetes 初期提供了对于 docker 的支持，但在后续添加 rkt 支持的补丁后，代码变得丑陋务必，充斥着大量的 “if this do rkt else do docker”。为后续出现的 runtimes 添加支持将无法再继续维护，基于此，CRI 诞生了。</p>
+<p>CRI 是一个基于 protobuf 定义的 api，包括两个 gRPC 服务，<code>ImageService</code> 和 <code>RuntimeService</code>。 <code>ImageServic</code>e 提供 RPC 以从仓库中提取镜像，检查和删除镜像。<code>RuntimeService</code> 包含用于管理 pod 和容器生命周期的 RPC，也提供与容器交互的调用（exec/attach/port-forward）。</p>
+<h4 id="cri-containerd"><a href="#cri-containerd" class="headerlink" title="cri-containerd"></a>cri-containerd</h4><p><img src="https://ws1.sinaimg.cn/large/7e0ee03agy1fvqixozwzbj20j70oqgn2.jpg" alt="cri-containerd-interaction"></p>
+<p><code>cri-containerd</code> 是一种向 <code>containerd</code> 添加 CRI 支持的服务，<code>containerd</code>是由 Docker 创建并捐赠给 CNCF ，提供 runtime 管理和镜像服务。后续  <code>containerd</code> 与 Docker 分离，将 runtime 管理器与 docker 其余的工具分离，以利于不断增长的容器管理工具生态系统在 docker api上实现标准化。这有助于 docker 社区的扩展并帮助在 docker 仓库中提供丰富的容器镜像。</p>
+<p>cri-containerd 在kubernetes 1.9 中处于 beta 阶段。</p>
+<h4 id="rktlet"><a href="#rktlet" class="headerlink" title="rktlet"></a>rktlet</h4><p><code>rktlet</code> 是一个使用 rkt 作为容器 runtime 的 Kubernetes 接口实现。</p>
+<p><img src="https://ws1.sinaimg.cn/large/7e0ee03agy1fvqiy2t9f9j20hl0qe75o.jpg" alt="rktlet-interaction"></p>
+<p>当 kubelet 请求创建一个 pod 时，rktlet 将启动一个 systemd 服务，该服务将通过运行 rkt 二进制文件创建一个新的 rkt sandbox。 创建 sandbox 后，kubelet 可以请求为 pod 添加/删除容器等。然后 rktlet 将使用相应的 rkt app 命令（app add，app rm，app start 或 app stop）运行 rkt 二进制文件。 其余的 CRI 方法也通过执行 rkt 二进制文件来处理。</p>
+<p>rktlet 在 kubernetes 1.9 中为 alpha 状态。</p>
+<h4 id="cri-o"><a href="#cri-o" class="headerlink" title="cri-o"></a>cri-o</h4><p>cri-o 是一个 CRI 实现，旨在为 kubernetes 提供 CRI 接口支撑。 cri-o 提供了一组最小的工具和接口来下载、提取和管理镜像、维护容器生命周期、并提供满足 CRI 所需的监控和日志记录。 它可以使用任何实现 OCI 运行时规范的 runtime，默认使用 runc。</p>
+<p><img src="https://ws1.sinaimg.cn/large/7e0ee03agy1fvqiyghnigj20ix0lo0tw.jpg" alt="cri-o-interaction"></p>
+<p>cri-o 使用配置的 runtime（默认情况下为runc）创建容器 sandbox（pod），然后再次使用 runtime 在该 pod 中创建容器。</p>
+<p>从kubernetes 1.9开始，cri-o 被认为是 stable 的。</p>
+<h4 id="frakti"><a href="#frakti" class="headerlink" title="frakti"></a>frakti</h4><p>Frakti 允许 Kubernetes 通过 runV 直接在虚拟机管理程序中运行 pod 和容器 。</p>
+<h2 id="OCI-Open-Container-Initiative-兼容-Runtimes"><a href="#OCI-Open-Container-Initiative-兼容-Runtimes" class="headerlink" title="OCI (Open Container Initiative) 兼容 Runtimes"></a>OCI (Open Container Initiative) 兼容 Runtimes</h2><h3 id="Containers"><a href="#Containers" class="headerlink" title="Containers"></a>Containers</h3><h4 id="bwrap-oci"><a href="#bwrap-oci" class="headerlink" title="bwrap-oci"></a>bwrap-oci</h4><p><code>bwrap-oci</code> 是为容器工具 bubblewrap 提供 OCI 兼容的包装器，bubblewrap 是一个无特权的容器工具。作者为：Per Giuseppe Scrivano，<code>bwrap-oci</code> 不满足e2e Kubernetes测试所需的许多功能，例如：无法指定绑定装载的选项，也无法通过 cgroup 限制资源。</p>
+<h4 id="crun"><a href="#crun" class="headerlink" title="crun"></a>crun</h4><p><code>crun</code>是用 C 编写的 OCI 运行时规范实现。配合 cri-o，作者 Giuseppe Scrivano 用它来通过了完整的 e2e 套件测试。它比同类型功能中的任何其他工具更小更轻。</p>
+<h4 id="railcar"><a href="#railcar" class="headerlink" title="railcar"></a>railcar</h4><p>railcar 是 OCI runtime-spec 规范的 rust 语言实现。参考并实现了 runc 的部分功能。一般来说，railcar 与 runc 非常相似，但不支持某些 runc 命令。截至目前不受支持的命令列表为：checkpoint，events，exec，init，list，pause，restore，resume，spec。 railcar 始终运行与容器进程分开的 init 进程。 railcar 在其研发过程号称发现了 OCI 运行时规范中的一些<a href="https://blogs.oracle.com/developers/building-a-container-runtime-in-rust" target="_blank" rel="noopener">缺陷</a>。通过使用 rust 语言重写 rust，作者能够消除在 go 语言实现过程中对于 c 语言中介层的的需要。</p>
+<p>我尝试向编写缺陷那篇文章的作者询问了有关缺陷的具体内容，但是未得到回复。</p>
+<h4 id="rkt"><a href="#rkt" class="headerlink" title="rkt"></a>rkt</h4><p>rkt 是一个在 LInux 上运行容器而编写的 CLI 工具。它采用多层设计，允许 runtime 可根据实现者的需求更改 。 默认情况下，rkt 结合使用 <code>systemd</code>和 <code>systemd-nspawn</code> 来创建容器。 systemd-nspawn 用于管理执行 systemd 以管理 cgroup 的命名空间。容器应用程序作为 systemd 单元运行。通过使用不同与 “1阶段” 镜像，该工具可将运行应用程序的工具可以从 systemd 工具更改为其他任何工具。</p>
+<p>rkt 包含与 runc 相同的功能，但是并不使用 OCI runtime-spec。相反，rkt 提供了一个命令行接口来提供类似的功能集。</p>
+<h4 id="runc"><a href="#runc" class="headerlink" title="runc"></a>runc</h4><p><a href="https://github.com/opencontainers/runc" target="_blank" rel="noopener">runc</a> 是一个主要用 go 编写的 CLI 工具（需要 c 语言的中介层 shim 来完成某些 go 不能完成的功能）。runc 是最受欢迎的 OCI runtime，被 containerd 和 cri-o 使用。</p>
+<p>在大多数情况下，所有 <code>runc</code> 都会在生成进程时配置 namespace 和 cgroup。 这实际上就是是一个容器，包括 namespace 和 cgroups。</p>
+<p>runc 依赖并跟踪 OCI runtime-spec，以保证 runc 和 OCI 规范主要版本保持同步。这意味着 runc 1.0.0 实现了 OCI 1.0 版本的规范。</p>
+<h4 id="runlxc"><a href="#runlxc" class="headerlink" title="runlxc"></a>runlxc</h4><p><code>runlxc</code> 是阿里巴巴即将开源的 OCI 兼容 runtime。 runlxc 目前尚未对外发布，与  <a href="https://github.com/alibaba/pouch" target="_blank" rel="noopener">pouch</a> 配合使用。</p>
+<h3 id="Virtual-Machines"><a href="#Virtual-Machines" class="headerlink" title="Virtual Machines"></a>Virtual Machines</h3><h4 id="Clear-Containers"><a href="#Clear-Containers" class="headerlink" title="Clear Containers"></a>Clear Containers</h4><p><a href="https://github.com/clearcontainers/runtime/" target="_blank" rel="noopener">cc-runtime</a> 兼容 OCI runtime，其通过启动一个 Intel VT-x 安全 <a href="https://github.com / clearcontainers / agent" target="_blank" rel="noopener">Clear Containers</a> 管理程序，而不是标准的Linux 容器。</p>
+<h4 id="runv"><a href="#runv" class="headerlink" title="runv"></a>runv</h4><p><a href="https://github.com/hyperhq/runv" target="_blank" rel="noopener">runv</a> 是基于 hypervisor 的 OCI runtime，使用 KVM，Xen 或 QEMU 来运行  OCI 镜像。它不会创建容器。</p>
+<h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><h3 id="技术"><a href="#技术" class="headerlink" title="技术"></a>技术</h3><h4 id="containerd"><a href="#containerd" class="headerlink" title="containerd"></a>containerd</h4><p>containerd 是 CRI 实现中最复杂的，提供镜像和 runtime 服务所需的 3 个组件，采用 Go 编写。</p>
+<p>这些组件包含两个独立的项目 <a href="https://github.com/containerd/cri.git" target="_blank" rel="noopener">cri</a>，提供了 19,000 行 Go 代码和 <a href="https://github.com/containerd/containerd.git" target="_blank" rel="noopener">containerd</a> 提供 runtime 的守护进程，运行程序和中介层代码一共 112,000 行。 containerd 默认使用它自己的 runc 分支，但是可以配置任何 OCI runtime 规范兼容的实现。</p>
+<p>Docker/containerd 对 CRI 支持处于 beta 阶段。</p>
+<p>我无法在 Arch Linux 中编译。由于时间有限，我没有花很多时间在这上面。依据 README.md 中的构建指令无法成功完成 <code>make install.deps</code> 阶段。</p>
+<h4 id="rkt-1"><a href="#rkt-1" class="headerlink" title="rkt"></a>rkt</h4><p>rkt 需要两个组件，rkt 和 rktlet。 尽管如此，它并没有遵循标准，而是以自己的方式做事情，尽管它的 github 描述说：“它是可组合的，安全的，并且建立在标准之上”。 它也是用 Go 编写的。</p>
+<p>rkt 组件是 <a href="https://github.com/rkt/rkt.git" target="_blank" rel="noopener">rkt</a>，包含 71,000 行 Go 和 <a href="https://github.com/kubernetes-incubator/rktlet.git" target="_blank" rel="noopener">rktlet</a>，包含 4,000 行。</p>
+<p>rktlet 对 CRI 支持是 alpha 版。</p>
+<h4 id="cri-o-1"><a href="#cri-o-1" class="headerlink" title="cri-o"></a>cri-o</h4><p>坐在中间是 <a href="https://github.com/kubernetes-incubator/cri-o.git" target="_blank" rel="noopener">cri-o</a>。cri-o 为容器编排工具 Kubernetes 定制而生。 凭借其聚焦的单一性，它很快就获得了 “稳定” 状态，仅用了 14,000 行 Go。 它与任何 OCI 运行时规范实现接口，默认为 runc。</p>
+<p>cri-o 对 CRI 支持是稳定。</p>
+<h3 id="可用性"><a href="#可用性" class="headerlink" title="可用性"></a>可用性</h3><p>选择 CRI 实现的一个明显因素是可用性。 您应该能够运行完整的 e2e 测试并能够运行任何 OCI 容器。 如果出现问题，应该能够快速诊断问题。</p>
+<h4 id="cri-o-2"><a href="#cri-o-2" class="headerlink" title="cri-o"></a>cri-o</h4><p>cri-o 可以作为包装安装在大多数发行版中。 使用 cri-o 非常简单。 只需更改 kubelet 标志即可使用默认值以使用cri-o 套接字。可以应用其他配置来添加其他功能，例如 repo 限制，selinux，apparmor seccomp，镜像签名等。调试问题很简单，因为只有两个部分，cri-o 守护程序和 <code>conmon</code> 控制台监视器。</p>
+<p>使用 runc 与kubernetes 1.9 我很容易通过完整的 e2e 测试。</p>
+<h4 id="cri-containerd-1"><a href="#cri-containerd-1" class="headerlink" title="cri-containerd"></a>cri-containerd</h4><p>由于无法编译，我无法测试其可用性。</p>
+<h4 id="rktlet-1"><a href="#rktlet-1" class="headerlink" title="rktlet"></a>rktlet</h4><p>rktlet 可以在大多数发行版中作为包安装。使用 rkt 可能需要一点学习曲线。有许多有效的方法来配置它，并且学习哪一个适合的用例并不是非常简单。 rkt 使用 “阶段”，并且很少有关于阶段1 镜像像用于什么目的的文档。你<em>可以</em>创建自己的阶段1 镜像，但似乎有适当的文档可能会提供这种需要。</p>
+<p>它只有三个部分，诊断问题通常非常简单，因为它与 systemd 集成，将所有输出留在日志中。</p>
+<p>在尝试使用 rktlet 作为我的 CRI 提供程序时，某些容器不能够正常工作。不幸的是，由于时间限制，所以我无法正确诊断。 我希望使用 rkt 就像更改 kubelet 标志一样简单。</p>
+<h3 id="社区"><a href="#社区" class="headerlink" title="社区"></a>社区</h3><p>作为开源社区的成员，社区的健康也很重要。 一个好的社区应该寻求积极参与，快速审查贡献并有一个记录良好的贡献过程。 它应该有一个积极和有效的用户群，在其中提出问题并获得答案。</p>
+<h4 id="cri-o-3"><a href="#cri-o-3" class="headerlink" title="cri-o"></a>cri-o</h4><p>自 2016 年 9 月 10 日以来已有 1354 Pull Requests，其中 23 个是 Open 的，最早的是 2017 年 9 月 19 日创建的，最后一次 Commit 是在 9 天前。 共有 75 名贡献者，其中 20 人在上个月活跃。 过去 30 天提交的 75％ 来自Red Hat 员工。 在过去的 30 天里，已经添加了 5,141 行代码和 删除了 694 行。 5,141 行代表了 37％ 的代码变化。 cri-o 有一个积极的贡献者基础，其中大部分是红帽员工，但有红帽以外的员工。 拉取请求需要合并 4 天的平均值。 问题大致相同。有一个 IRC 频道，开发人员在北美工作时间内回答用户问题，响应时间约为 4 分钟。</p>
+<h4 id="cri-containerd-containerd"><a href="#cri-containerd-containerd" class="headerlink" title="cri-containerd/containerd"></a>cri-containerd/containerd</h4><p>自 2017 年 4 月 14 日以来，已有 484 次针对 containerd/cri 的 Pull Requests，其中 6 次 是 Open 的。最早的Open PR 创建于 2017 年 12 月 8 日，最后一次 Comment 时间是 2018 年 1 月 18 日。共有 31 位贡献者，其中 8 位活跃于上个月。在过去的 30 天里，IBM，Docker，中兴通讯，谷歌和英特尔最终贡献了很多。在过去的 30天里，已经添加了 2,123 行代码和 删除了 1,217 行。 2,123 行代表了 11％ 的代码变化。对于 containerd /cri，并没有一个非常活跃的贡献者基础，但是这代表了社区的一个更健康的体现。</p>
+<p>自 2015 年 12月 7 日起，共向 containerd/containerd 提交了1,662 个 Pull Requests，其中 13 个是 Open 状态。 最早的 Open PR 创建于 2017 年 8 月 24 日，最后一次 Commit 于 2017 年 9 月 19 日。共有 120 名贡献者，其中 12人在上个月活跃。 过去 30 天中有 46％ 来自 Docker 员工，NTT 和 IBM 分别增加了31％。 在过去的 30 天里，已经添加了 4,444 行代码 和删除了 1,724 行。 4,444 行代表 3％ 的代码变化。 对于 containerd，有一个非常活跃的贡献者基础，但它仍然是多样化的。</p>
+<p>获得对这两者之一的支持需要注册为 docker 社区成员。</p>
+<h4 id="rktlet-rkt"><a href="#rktlet-rkt" class="headerlink" title="rktlet/rkt"></a>rktlet/rkt</h4><p>自 2014 年11月13 日起，共 2 ,406 次 Pull Requests，其中 49 份是开放的。 最旧的 Open PR 创建于 2015 年 8 月25 日，最后一次 Commente 记录时间是 2016 年 8 月 9 日。我认为 rkt 维护者可以做得更好。 接受的 PR 通常在一周内进行审核和合并。 共有 195 名贡献者，上个月没有任何活动。 rkt 的活动急剧下降。 我不确定这是不是一个活跃的项目。</p>
+<p>在看了 rkt 的活跃状况后，我选择忽略了继续查看 rktlet 社区的健康状况。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>标准和其相关的 apis 定义提供了非常大的灵活性，并有助于防止锁定在特定的累积技术债中。通过使用 OCI（Open Container Initiative） 容器和 rumtime 标准以及 Kubernetes 的 CRI（Container Runtime Interface ）API，可以选择演进任何任何特定选项而不用更整个堆技术栈。</p>
+<p>为此，应该弃用 kubernetes 原生支持的 docker 机制，并且只应使用 CRI。</p>
+<p>基于 hypervisor 的解决方案，我并没有在选择继续分析，因为在本文章编写的时候，runlxc 尚未开源。</p>
+<p>对于 CRI 接口，rktlet/rkt 没有长期的社区支持，而且经过了很长的时间才演变成 beta 状态；cri-containerd 并没有提供一个良好的构建过程，也没有发行版的包装，我无法测试。cri-containerd 仍然只是一个 beta 版本，获得支持有障碍。cri-o 相对稳定，快速，轻松地构建，而且更适合在生产环境稳定运行，并且具备非常好的社区支持。我的结论是，cri-o 是目前最好的选择。</p>
+<p>对于 runtime，虽然  railcar 和 crun在技术上可能更优越，但我没有时间测试它们。由于它们是可替代品，因此预先为此工具选择最佳技术并不重要。我建议使用当前默认的 runc，直到可以彻底评估它们为止。</p>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/10/09/container-runtime-k8s/" title="容器技术与" k8s="" 集成介绍="">
+                    <div class="nextTitle">容器技术与 K8S 集成介绍</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/09/26/xds-protocol/" title="xDS" rest="" 和="" grpc="" 协议（译）="">
+                    <div class="prevTitle">xDS REST 和 gRPC 协议（译）</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/09/29/kubernets-container-runtime/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "为 Kubernetes 选择合适的 container runtime（译）"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#意见"><span class="toc-number">1.</span> <span class="toc-text">意见</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Kubernetes-接口"><span class="toc-number">2.</span> <span class="toc-text">Kubernetes 接口</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Native"><span class="toc-number">2.1.</span> <span class="toc-text">Native</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Docker"><span class="toc-number">2.1.1.</span> <span class="toc-text">Docker</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rktnetes"><span class="toc-number">2.1.2.</span> <span class="toc-text">rktnetes</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#CRI"><span class="toc-number">2.2.</span> <span class="toc-text">CRI</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-containerd"><span class="toc-number">2.2.1.</span> <span class="toc-text">cri-containerd</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rktlet"><span class="toc-number">2.2.2.</span> <span class="toc-text">rktlet</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-o"><span class="toc-number">2.2.3.</span> <span class="toc-text">cri-o</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#frakti"><span class="toc-number">2.2.4.</span> <span class="toc-text">frakti</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#OCI-Open-Container-Initiative-兼容-Runtimes"><span class="toc-number">3.</span> <span class="toc-text">OCI (Open Container Initiative) 兼容 Runtimes</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Containers"><span class="toc-number">3.1.</span> <span class="toc-text">Containers</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#bwrap-oci"><span class="toc-number">3.1.1.</span> <span class="toc-text">bwrap-oci</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#crun"><span class="toc-number">3.1.2.</span> <span class="toc-text">crun</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#railcar"><span class="toc-number">3.1.3.</span> <span class="toc-text">railcar</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rkt"><span class="toc-number">3.1.4.</span> <span class="toc-text">rkt</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#runc"><span class="toc-number">3.1.5.</span> <span class="toc-text">runc</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#runlxc"><span class="toc-number">3.1.6.</span> <span class="toc-text">runlxc</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Virtual-Machines"><span class="toc-number">3.2.</span> <span class="toc-text">Virtual Machines</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Clear-Containers"><span class="toc-number">3.2.1.</span> <span class="toc-text">Clear Containers</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#runv"><span class="toc-number">3.2.2.</span> <span class="toc-text">runv</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#分析"><span class="toc-number">4.</span> <span class="toc-text">分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#技术"><span class="toc-number">4.1.</span> <span class="toc-text">技术</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#containerd"><span class="toc-number">4.1.1.</span> <span class="toc-text">containerd</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rkt-1"><span class="toc-number">4.1.2.</span> <span class="toc-text">rkt</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-o-1"><span class="toc-number">4.1.3.</span> <span class="toc-text">cri-o</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#可用性"><span class="toc-number">4.2.</span> <span class="toc-text">可用性</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-o-2"><span class="toc-number">4.2.1.</span> <span class="toc-text">cri-o</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-containerd-1"><span class="toc-number">4.2.2.</span> <span class="toc-text">cri-containerd</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rktlet-1"><span class="toc-number">4.2.3.</span> <span class="toc-text">rktlet</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#社区"><span class="toc-number">4.3.</span> <span class="toc-text">社区</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-o-3"><span class="toc-number">4.3.1.</span> <span class="toc-text">cri-o</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#cri-containerd-containerd"><span class="toc-number">4.3.2.</span> <span class="toc-text">cri-containerd/containerd</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#rktlet-rkt"><span class="toc-number">4.3.3.</span> <span class="toc-text">rktlet/rkt</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#总结"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

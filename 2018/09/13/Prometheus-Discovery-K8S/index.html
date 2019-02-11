@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prometheus Discovery 之 K8S 代码分析 · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Prometheus Discovery 之 K8S 代码分析</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Prometheus Discovery 之 K8S 代码分析
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubenetes">kubenetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="prometheus">prometheus</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/09/13</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h2 id="Service-Discovery-interface"><a href="#Service-Discovery-interface" class="headerlink" title="Service Discovery interface"></a>Service Discovery interface</h2><p>Service Discovery 必须实现 Discovery 接口，定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Discoverer <span class="keyword">interface</span> &#123;</span><br><span class="line">   Run(ctx context.Context, ch <span class="keyword">chan</span>&lt;- []*targetgroup.Group)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Prometheus 支持了众多的 SD 发现机制，代码位于  discovery 目录下。</p>
+<p>Group 的结构定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Group is a set of targets with a common label set(production , test, staging etc.).</span></span><br><span class="line"><span class="keyword">type</span> Group <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// Targets is a list of targets identified by a label set. Each target is</span></span><br><span class="line">	<span class="comment">// uniquely identifiable in the group by its address label.</span></span><br><span class="line">	Targets []model.LabelSet</span><br><span class="line">	<span class="comment">// Labels is a set of labels that is common across all targets in the group.</span></span><br><span class="line">	Labels model.LabelSet</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Source is an identifier that describes a group of targets.</span></span><br><span class="line">	Source <span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>K8S 的 Discoverer 定义在文件 <code>gprometheus/discovery/kubernetes/kubernetes.go</code> 中。</p>
+<p>在 init 函数中注册了metrics  <code>prometheus_sd_kubernetes_events_total</code>，用于分析发现过程中的事件接受数量：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">init</span><span class="params">()</span></span> &#123;</span><br><span class="line">	prometheus.MustRegister(eventCount)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Initialize metric vectors.</span></span><br><span class="line">	<span class="keyword">for</span> _, role := <span class="keyword">range</span> []<span class="keyword">string</span>&#123;<span class="string">"endpoints"</span>, <span class="string">"node"</span>, <span class="string">"pod"</span>, <span class="string">"service"</span>&#125; &#123;</span><br><span class="line">		<span class="keyword">for</span> _, evt := <span class="keyword">range</span> []<span class="keyword">string</span>&#123;<span class="string">"add"</span>, <span class="string">"delete"</span>, <span class="string">"update"</span>&#125; &#123;</span><br><span class="line">			eventCount.WithLabelValues(role, evt)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>第一次可以全量的将全部事件发送到接口中定义的 <code>ch</code> 中，后续的更新事件，只需要发送更新的事件信息内容即可，如果信息被删除了则可以发送一个为空的事件内容（包含 <code>Source</code>），所有事件通过 <code>Source</code> 字段作为唯一  key。 </p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Discovery implements the discoverer interface for discovering</span></span><br><span class="line"><span class="comment">// targets from Kubernetes.</span></span><br><span class="line"><span class="comment">// 每个 role 会启动一个单独的 Discovery 进行跟踪</span></span><br><span class="line"><span class="keyword">type</span> Discovery <span class="keyword">struct</span> &#123;</span><br><span class="line">	sync.RWMutex</span><br><span class="line">	client             kubernetes.Interface  <span class="comment">// 连接到 k8s 的 client</span></span><br><span class="line">	role               Role</span><br><span class="line">	logger             log.Logger</span><br><span class="line">	namespaceDiscovery *NamespaceDiscovery <span class="comment">// 保存需要监控的 namespace </span></span><br><span class="line">	discoverers        []discoverer        <span class="comment">// 每个 role 按照 namespace 进行划分，单独跟踪的 sd</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中 <code>discoverers</code> 分不同的 namespace，每个 namespace 会单独起一个内部的 discoverer 来进行单独的跟踪。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// This is only for internal use.</span></span><br><span class="line"><span class="keyword">type</span> discoverer <span class="keyword">interface</span> &#123;</span><br><span class="line">	Run(ctx context.Context, up <span class="keyword">chan</span>&lt;- []*targetgroup.Group)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="初始化和运行"><a href="#初始化和运行" class="headerlink" title="初始化和运行"></a>初始化和运行</h2><p>main 函数入口</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    <span class="comment">// 初始化 </span></span><br><span class="line">	discoveryManagerScrape  = discovery.NewManager(ctxScrape, log.With(logger, <span class="string">"component"</span>, <span class="string">"discovery manager scrape"</span>))</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// Notify 的作用待定？</span></span><br><span class="line">    discoveryManagerNotify  = discovery.NewManager(ctxNotify, log.With(logger, <span class="string">"component"</span>, <span class="string">"discovery manager notify"</span>))</span><br><span class="line">	</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">	</span><br><span class="line">	reloaders := []<span class="function"><span class="keyword">func</span><span class="params">(cfg *config.Config)</span> <span class="title">error</span></span>&#123;</span><br><span class="line">			<span class="comment">// JobName 为 key ，对应到相关配置</span></span><br><span class="line">        	<span class="comment">// v.JobName] = v.ServiceDiscoveryConfig</span></span><br><span class="line">				<span class="function"><span class="keyword">func</span><span class="params">(cfg *config.Config)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">			c := <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>]sd_config.ServiceDiscoveryConfig)</span><br><span class="line">			<span class="keyword">for</span> _, v := <span class="keyword">range</span> cfg.ScrapeConfigs &#123;</span><br><span class="line">				c[v.JobName] = v.ServiceDiscoveryConfig</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">return</span> discoveryManagerScrape.ApplyConfig(c)</span><br><span class="line">		&#125;,</span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">        </span><br><span class="line">     &#123;</span><br><span class="line">		<span class="comment">// Scrape discovery manager.</span></span><br><span class="line">		g.Add(</span><br><span class="line">			<span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="title">error</span></span> &#123;</span><br><span class="line">               <span class="comment">// 调用 Run 启动</span></span><br><span class="line">				err := discoveryManagerScrape.Run()</span><br><span class="line">				level.Info(logger).Log(<span class="string">"msg"</span>, <span class="string">"Scrape discovery manager stopped"</span>)</span><br><span class="line">				<span class="keyword">return</span> err</span><br><span class="line">			&#125;,</span><br><span class="line">			<span class="function"><span class="keyword">func</span><span class="params">(err error)</span></span> &#123;</span><br><span class="line">				level.Info(logger).Log(<span class="string">"msg"</span>, <span class="string">"Stopping scrape discovery manager..."</span>)</span><br><span class="line">				cancelScrape()</span><br><span class="line">			&#125;,</span><br><span class="line">		)</span><br><span class="line">	&#125;</span><br><span class="line">        </span><br><span class="line">   <span class="keyword">if</span> err := g.Run(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		level.Error(logger).Log(<span class="string">"err"</span>, err)</span><br><span class="line">		os.Exit(<span class="number">1</span>)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>整个 DS 的入口在 <code>prometheus/discovery/manager.go</code> 中</p>
+<p>NewManager 函数用于生成 DS Mgr 对象：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">// NewManager is the Discovery Manager constructor</span><br><span class="line">func NewManager(ctx context.Context, logger log.Logger) *Manager &#123;</span><br><span class="line">   if logger == nil &#123;</span><br><span class="line">      logger = log.NewNopLogger()</span><br><span class="line">   &#125;</span><br><span class="line">   return &amp;Manager&#123;</span><br><span class="line">      logger:         logger,</span><br><span class="line">      syncCh:         make(chan map[string][]*targetgroup.Group),</span><br><span class="line">      targets:        make(map[poolKey]map[string]*targetgroup.Group),</span><br><span class="line">      discoverCancel: []context.CancelFunc&#123;&#125;,</span><br><span class="line">      ctx:            ctx,</span><br><span class="line">   &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ApplyConfig removes all running discovery providers and starts new ones using the provided config.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">ApplyConfig</span><span class="params">(cfg <span class="keyword">map</span>[<span class="keyword">string</span>]sd_config.ServiceDiscoveryConfig)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	m.mtx.Lock()</span><br><span class="line">	<span class="keyword">defer</span> m.mtx.Unlock()</span><br><span class="line"></span><br><span class="line">	m.cancelDiscoverers()</span><br><span class="line">    <span class="comment">// 对于配置文件组织管理</span></span><br><span class="line">	<span class="keyword">for</span> name, scfg := <span class="keyword">range</span> cfg &#123;</span><br><span class="line">		m.registerProviders(scfg, name)</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 全部启动</span></span><br><span class="line">	<span class="keyword">for</span> _, prov := <span class="keyword">range</span> m.providers &#123;</span><br><span class="line">		m.startProvider(m.ctx, prov)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>将每个 JobName 为 key 的结构进行注册管理</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// provider 用于管理可能相同配置的不同 job 任务</span></span><br><span class="line"><span class="comment">// provider holds a Discoverer instance, its configuration and its subscribers.</span></span><br><span class="line"><span class="keyword">type</span> provider <span class="keyword">struct</span> &#123;</span><br><span class="line">	name   <span class="keyword">string</span>       <span class="comment">// "kubernetes_sd_configs/[0-n]"</span></span><br><span class="line">	d      Discoverer   <span class="comment">// 对应的 Discoverer </span></span><br><span class="line">	subs   []<span class="keyword">string</span>     <span class="comment">// 配置相关情况下的，可能是不同的 JobName</span></span><br><span class="line">	config <span class="keyword">interface</span>&#123;&#125;  <span class="comment">// 对应的相关配置</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Manager 结构如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Manager maintains a set of discovery providers and sends each update to a map channel.</span></span><br><span class="line"><span class="comment">// Targets are grouped by the target set name.</span></span><br><span class="line"><span class="keyword">type</span> Manager <span class="keyword">struct</span> &#123;</span><br><span class="line">   logger         log.Logger</span><br><span class="line">   mtx            sync.RWMutex</span><br><span class="line">   ctx            context.Context</span><br><span class="line">   discoverCancel []context.CancelFunc</span><br><span class="line"></span><br><span class="line">   <span class="comment">// Some Discoverers(eg. k8s) send only the updates for a given target group</span></span><br><span class="line">   <span class="comment">// so we use map[tg.Source]*targetgroup.Group to know which group to update.</span></span><br><span class="line">    <span class="comment">// poolkey: job_name + provider_n, 将事件放到各个 job 任务的队列中</span></span><br><span class="line">   targets <span class="keyword">map</span>[poolKey]<span class="keyword">map</span>[<span class="keyword">string</span>]*targetgroup.Group </span><br><span class="line">   <span class="comment">// providers keeps track of SD providers.</span></span><br><span class="line">   providers []*provider</span><br><span class="line">   <span class="comment">// The sync channels sends the updates in map[targetSetName] where targetSetName is the job value from the scrape config.</span></span><br><span class="line">    <span class="comment">// 经过聚合后，将需要更新的对象信息发送到 jobName 的队列中</span></span><br><span class="line">   syncCh <span class="keyword">chan</span> <span class="keyword">map</span>[<span class="keyword">string</span>][]*targetgroup.Group</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>registerProviders：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">registerProviders</span><span class="params">(cfg sd_config.ServiceDiscoveryConfig, setName <span class="keyword">string</span>)</span></span>&#123;</span><br><span class="line">    <span class="comment">// setName 为 JobName</span></span><br><span class="line">	add := <span class="function"><span class="keyword">func</span><span class="params">(cfg <span class="keyword">interface</span>&#123;&#125;, newDiscoverer <span class="keyword">func</span>()</span> <span class="params">(Discoverer, error)</span>)</span> &#123;</span><br><span class="line">		t := reflect.TypeOf(cfg).String() <span class="comment">// kubernetes_sd_configs</span></span><br><span class="line">		<span class="keyword">for</span> _, p := <span class="keyword">range</span> m.providers &#123;</span><br><span class="line">			<span class="keyword">if</span> reflect.DeepEqual(cfg, p.config) &#123;</span><br><span class="line">				p.subs = <span class="built_in">append</span>(p.subs, setName)</span><br><span class="line">				<span class="keyword">return</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		</span><br><span class="line">        <span class="comment">// call kubernetes.New(log.With(m.logger, "discovery", "k8s"), cfg)</span></span><br><span class="line">		d, err := newDiscoverer()</span><br><span class="line">		provider := provider&#123;</span><br><span class="line">            <span class="comment">// t = "kubernetes_sd_configs"</span></span><br><span class="line">			name:   fmt.Sprintf(<span class="string">"%s/%d"</span>, t, <span class="built_in">len</span>(m.providers)),</span><br><span class="line">			d:      d,</span><br><span class="line">			config: cfg,</span><br><span class="line">			subs:   []<span class="keyword">string</span>&#123;setName&#125;,</span><br><span class="line">		&#125;</span><br><span class="line">		m.providers = <span class="built_in">append</span>(m.providers, &amp;provider)</span><br><span class="line">	&#125;</span><br><span class="line">	</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">    <span class="comment">// 循环处理 k8s 相关的配置</span></span><br><span class="line">	<span class="keyword">for</span> _, c := <span class="keyword">range</span> cfg.KubernetesSDConfigs &#123;</span><br><span class="line">		add(c, <span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="params">(Discoverer, error)</span></span> &#123;</span><br><span class="line">			<span class="keyword">return</span> kubernetes.New(log.With(m.logger, <span class="string">"discovery"</span>, <span class="string">"k8s"</span>), c)</span><br><span class="line">		&#125;)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<p>整体结构如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Manager --&gt; []provider -&gt; provider[k8s/0] --&gt;  Discovery -&gt;  [roleA]discoverys -&gt; ns1, ns2 </span><br><span class="line">                          provider[k8s/n]                -&gt;  [roleB]discoverys -&gt; ns1, ns2</span><br><span class="line">                          provider[xxx/n]         discovery: Service, Endpoints, Service..</span><br></pre></td></tr></table></figure>
+<p>启动：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">startProvider</span><span class="params">(ctx context.Context, p *provider)</span></span> &#123;</span><br><span class="line">   level.Debug(m.logger).Log(<span class="string">"msg"</span>, <span class="string">"Starting provider"</span>, <span class="string">"provider"</span>, p.name, <span class="string">"subs"</span>, fmt.Sprintf(<span class="string">"%v"</span>, p.subs))</span><br><span class="line">   ctx, cancel := context.WithCancel(ctx)</span><br><span class="line">    </span><br><span class="line">   <span class="comment">// updates 为 SD 对外输出目标的通道，需要重点关注</span></span><br><span class="line">   updates := <span class="built_in">make</span>(<span class="keyword">chan</span> []*targetgroup.Group)</span><br><span class="line"></span><br><span class="line">   m.discoverCancel = <span class="built_in">append</span>(m.discoverCancel, cancel)</span><br><span class="line"></span><br><span class="line">   <span class="keyword">go</span> p.d.Run(ctx, updates) <span class="comment">// 循环启动</span></span><br><span class="line">   <span class="keyword">go</span> m.updater(ctx, p, updates)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p> <code>updater(ctx, p, updates)</code> 负责从 SD 发送的通道中读取数据:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">updater</span><span class="params">(ctx context.Context, p *provider, updates <span class="keyword">chan</span> []*targetgroup.Group)</span></span> &#123;</span><br><span class="line">   ticker := time.NewTicker(<span class="number">5</span> * time.Second)</span><br><span class="line">   <span class="keyword">defer</span> ticker.Stop()</span><br><span class="line"></span><br><span class="line">   triggerUpdate := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;, <span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">   <span class="keyword">for</span> &#123;</span><br><span class="line">      <span class="keyword">select</span> &#123;</span><br><span class="line">      <span class="keyword">case</span> &lt;-ctx.Done():</span><br><span class="line">         <span class="keyword">return</span></span><br><span class="line">      <span class="keyword">case</span> tgs, ok := &lt;-updates:</span><br><span class="line">         <span class="keyword">if</span> !ok &#123;</span><br><span class="line">            level.Debug(m.logger).Log(<span class="string">"msg"</span>, <span class="string">"discoverer channel closed, sending the last update"</span>, <span class="string">"provider"</span>, p.name)</span><br><span class="line">            <span class="keyword">select</span> &#123;</span><br><span class="line">            <span class="keyword">case</span> m.syncCh &lt;- m.allGroups(): <span class="comment">// Waiting until the receiver can accept the last update.</span></span><br><span class="line">               level.Debug(m.logger).Log(<span class="string">"msg"</span>, <span class="string">"discoverer exited"</span>, <span class="string">"provider"</span>, p.name)</span><br><span class="line">               <span class="keyword">return</span></span><br><span class="line">            <span class="keyword">case</span> &lt;-ctx.Done():</span><br><span class="line">               <span class="keyword">return</span></span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">         &#125;</span><br><span class="line">          </span><br><span class="line">          <span class="comment">// s: job_name, provider: k8s/n</span></span><br><span class="line">          <span class="comment">// 针对可能的订阅者(包括相同配置的订阅者) 发送事件</span></span><br><span class="line">         <span class="keyword">for</span> _, s := <span class="keyword">range</span> p.subs &#123;</span><br><span class="line">            m.updateGroup(poolKey&#123;setName: s, provider: p.name&#125;, tgs)</span><br><span class="line">         &#125;</span><br><span class="line"></span><br><span class="line">         <span class="keyword">select</span> &#123;</span><br><span class="line">         <span class="keyword">case</span> triggerUpdate &lt;- <span class="keyword">struct</span>&#123;&#125;&#123;&#125;:</span><br><span class="line">         <span class="keyword">default</span>:</span><br><span class="line">         &#125;</span><br><span class="line">      <span class="keyword">case</span> &lt;-ticker.C: <span class="comment">// Some discoverers send updates too often so we throttle these with the ticker.</span></span><br><span class="line">         <span class="keyword">select</span> &#123;</span><br><span class="line">         <span class="keyword">case</span> &lt;-triggerUpdate:</span><br><span class="line">            <span class="keyword">select</span> &#123;</span><br><span class="line">                <span class="comment">// m.allGroups() 按照 pkey.SetName (job_name 进行聚合)</span></span><br><span class="line">            <span class="keyword">case</span> m.syncCh &lt;- m.allGroups(): </span><br><span class="line">            <span class="keyword">default</span>:</span><br><span class="line">               level.Debug(m.logger).Log(<span class="string">"msg"</span>, <span class="string">"discovery receiver's channel was full so will retry the next cycle"</span>, <span class="string">"provider"</span>, p.name)</span><br><span class="line">               <span class="keyword">select</span> &#123;</span><br><span class="line">               <span class="keyword">case</span> triggerUpdate &lt;- <span class="keyword">struct</span>&#123;&#125;&#123;&#125;:</span><br><span class="line">               <span class="keyword">default</span>:</span><br><span class="line">               &#125;</span><br><span class="line">            &#125;</span><br><span class="line">         <span class="keyword">default</span>:</span><br><span class="line">         &#125;</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p> 读取 channel 数据后，放入到相对应的 poolkey 中进行更新</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">updateGroup</span><span class="params">(poolKey poolKey, tgs []*targetgroup.Group)</span></span> &#123;</span><br><span class="line">	m.mtx.Lock()</span><br><span class="line">	<span class="keyword">defer</span> m.mtx.Unlock()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> _, tg := <span class="keyword">range</span> tgs &#123;</span><br><span class="line">		<span class="keyword">if</span> tg != <span class="literal">nil</span> &#123; <span class="comment">// Some Discoverers send nil target group so need to check for it to avoid panics.</span></span><br><span class="line">			<span class="keyword">if</span> _, ok := m.targets[poolKey]; !ok &#123;</span><br><span class="line">				m.targets[poolKey] = <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>]*targetgroup.Group)</span><br><span class="line">			&#125;</span><br><span class="line">            <span class="comment">// poolkey: job_name + provider_n, </span></span><br><span class="line">			m.targets[poolKey][tg.Source] = tg</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>最终  Manager 将数据汇总到了  <code>syncCh chan map[string][]*targetgroup.Group</code> 中的定义的 JobName 对应的队列中，通过其 <code>SyncCh</code> 函数将该通道返回出去</p>
+<h2 id="处理更新后的事件"><a href="#处理更新后的事件" class="headerlink" title="处理更新后的事件"></a>处理更新后的事件</h2><p>main 函数中，scrapeManager 负责从 DS Manager 的输出队列中读取数据：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">int main()&#123;</span><br><span class="line">    </span><br><span class="line">	// ...</span><br><span class="line">	&#123;</span><br><span class="line">		// Scrape manager.</span><br><span class="line">		g.Add(</span><br><span class="line">			func() error &#123;</span><br><span class="line">				// When the scrape manager receives a new targets list</span><br><span class="line">				// it needs to read a valid config for each job.</span><br><span class="line">				// It depends on the config being in sync with the discovery manager so</span><br><span class="line">				// we wait until the config is fully loaded.</span><br><span class="line">				&lt;-reloadReady.C</span><br><span class="line"></span><br><span class="line">				err := scrapeManager.Run(discoveryManagerScrape.SyncCh())</span><br><span class="line">				level.Info(logger).Log(&quot;msg&quot;, &quot;Scrape manager stopped&quot;)</span><br><span class="line">				return err</span><br><span class="line">			&#125;,</span><br><span class="line">			func(err error) &#123;</span><br><span class="line">				// Scrape manager needs to be stopped before closing the local TSDB</span><br><span class="line">				// so that it doesn&apos;t try to write samples to a closed storage.</span><br><span class="line">				level.Info(logger).Log(&quot;msg&quot;, &quot;Stopping scrape manager...&quot;)</span><br><span class="line">				scrapeManager.Stop()</span><br><span class="line">			&#125;,</span><br><span class="line">		)</span><br><span class="line">	&#125;</span><br><span class="line">	</span><br><span class="line">    // ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>scraple/manager.go</code> 中定义：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Manager maintains a set of scrape pools and manages start/stop cycles</span></span><br><span class="line"><span class="comment">// when receiving new target groups form the discovery manager.</span></span><br><span class="line"><span class="keyword">type</span> Manager <span class="keyword">struct</span> &#123;</span><br><span class="line">	logger    log.Logger</span><br><span class="line">	<span class="built_in">append</span>    Appendable</span><br><span class="line">	graceShut <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">	mtxTargets     sync.Mutex <span class="comment">// Guards the fields below.</span></span><br><span class="line">	targetsActive  []*Target</span><br><span class="line">	targetsDropped []*Target</span><br><span class="line">	targetsAll     <span class="keyword">map</span>[<span class="keyword">string</span>][]*Target</span><br><span class="line"></span><br><span class="line">	mtxScrape     sync.Mutex <span class="comment">// Guards the fields below.</span></span><br><span class="line">	scrapeConfigs <span class="keyword">map</span>[<span class="keyword">string</span>]*config.ScrapeConfig</span><br><span class="line">	scrapePools   <span class="keyword">map</span>[<span class="keyword">string</span>]*scrapePool</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Run starts background processing to handle target updates and reload the scraping loops.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">Run</span><span class="params">(tsets &lt;-<span class="keyword">chan</span> <span class="keyword">map</span>[<span class="keyword">string</span>][]*targetgroup.Group)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> ts := &lt;-tsets:</span><br><span class="line">			m.reload(ts)</span><br><span class="line">		<span class="keyword">case</span> &lt;-m.graceShut:</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>reload 函数定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Manager)</span> <span class="title">reload</span><span class="params">(t <span class="keyword">map</span>[<span class="keyword">string</span>][]*targetgroup.Group)</span></span> &#123;</span><br><span class="line">	m.mtxScrape.Lock()</span><br><span class="line">	<span class="keyword">defer</span> m.mtxScrape.Unlock()</span><br><span class="line"></span><br><span class="line">	tDropped := <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>][]*Target)</span><br><span class="line">	tActive := <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>][]*Target)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> tsetName, tgroup := <span class="keyword">range</span> t &#123;</span><br><span class="line">		<span class="keyword">var</span> sp *scrapePool</span><br><span class="line">		<span class="keyword">if</span> existing, ok := m.scrapePools[tsetName]; !ok &#123;</span><br><span class="line">			scrapeConfig, ok := m.scrapeConfigs[tsetName]</span><br><span class="line">			<span class="keyword">if</span> !ok &#123;</span><br><span class="line">				level.Error(m.logger).Log(<span class="string">"msg"</span>, <span class="string">"error reloading target set"</span>, <span class="string">"err"</span>, fmt.Sprintf(<span class="string">"invalid config id:%v"</span>, tsetName))</span><br><span class="line">				<span class="keyword">continue</span></span><br><span class="line">			&#125;</span><br><span class="line">			sp = newScrapePool(scrapeConfig, m.<span class="built_in">append</span>, log.With(m.logger, <span class="string">"scrape_pool"</span>, tsetName))</span><br><span class="line">			m.scrapePools[tsetName] = sp</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			sp = existing</span><br><span class="line">		&#125;</span><br><span class="line">        </span><br><span class="line">        <span class="comment">// Sync 函数中用于过滤相关符合条件的 Target</span></span><br><span class="line">		tActive[tsetName], tDropped[tsetName] = sp.Sync(tgroup)</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 更新获取和丢弃的目标，可以通过界面查询到对应的结果 </span></span><br><span class="line">	m.targetsUpdate(tActive, tDropped)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>sync 定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Sync converts target groups into actual scrape targets and synchronizes</span></span><br><span class="line"><span class="comment">// the currently running scraper with the resulting set and returns all scraped and dropped targets.</span></span><br><span class="line"><span class="comment">// 同步将目标组转换为实际的抓取目标，并将当前运行的抓取与结果集同步，并返回所有刮取和删除的目标。</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(sp *scrapePool)</span> <span class="title">Sync</span><span class="params">(tgs []*targetgroup.Group)</span> <span class="params">(tActive []*Target, tDropped []*Target)</span></span> &#123;</span><br><span class="line">	start := time.Now()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">var</span> all []*Target</span><br><span class="line">	sp.mtx.Lock()</span><br><span class="line">	sp.droppedTargets = []*Target&#123;&#125;</span><br><span class="line">	<span class="keyword">for</span> _, tg := <span class="keyword">range</span> tgs &#123;</span><br><span class="line">        <span class="comment">// targetsFromGroup 函数通过相关配置完成转换</span></span><br><span class="line">		targets, err := targetsFromGroup(tg, sp.config)</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> _, t := <span class="keyword">range</span> targets &#123;</span><br><span class="line">            <span class="comment">// 返回目标的标签，不是处理后的，不以 “__” 为前缀</span></span><br><span class="line">			<span class="keyword">if</span> t.Labels().Len() &gt; <span class="number">0</span> &#123; <span class="comment">// 不存在以 “__" 为前缀匹配的标签</span></span><br><span class="line">				all = <span class="built_in">append</span>(all, t)</span><br><span class="line">			&#125; <span class="keyword">else</span> <span class="keyword">if</span> t.DiscoveredLabels().Len() &gt; <span class="number">0</span> &#123;</span><br><span class="line">				sp.droppedTargets = <span class="built_in">append</span>(sp.droppedTargets, t)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	sp.mtx.Unlock()</span><br><span class="line">	sp.sync(all)</span><br><span class="line"></span><br><span class="line">	targetSyncIntervalLength.WithLabelValues(sp.config.JobName).Observe(</span><br><span class="line">		time.Since(start).Seconds(),</span><br><span class="line">	)</span><br><span class="line">	targetScrapePoolSyncsCounter.WithLabelValues(sp.config.JobName).Inc()</span><br><span class="line"></span><br><span class="line">	sp.mtx.RLock()</span><br><span class="line">	<span class="keyword">for</span> _, t := <span class="keyword">range</span> sp.targets &#123;</span><br><span class="line">		tActive = <span class="built_in">append</span>(tActive, t)</span><br><span class="line">	&#125;</span><br><span class="line">	tDropped = sp.droppedTargets</span><br><span class="line">	sp.mtx.RUnlock()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> tActive, tDropped</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>targetsFromGroup函数根据输入的对象信息和相关配置完成过滤的整体工作：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// targetsFromGroup builds targets based on the given TargetGroup and config.</span></span><br><span class="line"><span class="comment">// targetsFromGroup 根据给定的 TargetGroup 和 config 构建目标</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">targetsFromGroup</span><span class="params">(tg *targetgroup.Group, cfg *config.ScrapeConfig)</span> <span class="params">([]*Target, error)</span></span> &#123;</span><br><span class="line">	targets := <span class="built_in">make</span>([]*Target, <span class="number">0</span>, <span class="built_in">len</span>(tg.Targets))</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> i, tlset := <span class="keyword">range</span> tg.Targets &#123;</span><br><span class="line">        <span class="comment">// 将每个数组中的标签和通用标签合并进行过滤</span></span><br><span class="line">		lbls := <span class="built_in">make</span>([]labels.Label, <span class="number">0</span>, <span class="built_in">len</span>(tlset)+<span class="built_in">len</span>(tg.Labels))</span><br><span class="line">		</span><br><span class="line">        <span class="comment">// 合并发现的标签</span></span><br><span class="line">		<span class="keyword">for</span> ln, lv := <span class="keyword">range</span> tlset &#123;</span><br><span class="line">			lbls = <span class="built_in">append</span>(lbls, labels.Label&#123;Name: <span class="keyword">string</span>(ln), Value: <span class="keyword">string</span>(lv)&#125;)</span><br><span class="line">		&#125;</span><br><span class="line">        </span><br><span class="line">        <span class="comment">// 合并通用标签</span></span><br><span class="line">		<span class="keyword">for</span> ln, lv := <span class="keyword">range</span> tg.Labels &#123;</span><br><span class="line">			<span class="keyword">if</span> _, ok := tlset[ln]; !ok &#123;</span><br><span class="line">				lbls = <span class="built_in">append</span>(lbls, labels.Label&#123;Name: <span class="keyword">string</span>(ln), Value: <span class="keyword">string</span>(lv)&#125;)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		</span><br><span class="line">        <span class="comment">// 复制一份合并后的标签列表</span></span><br><span class="line">		lset := labels.New(lbls...)</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 根据 cfg 配置来进行过滤， lset 为本次的全量标签; lbls 为根据配置处理后的标签集合，origLabels 为处理之前的原始标签集</span></span><br><span class="line">		lbls, origLabels, err := populateLabels(lset, cfg)</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果 lbls 或者 origLabels 有一个不为空，则加入</span></span><br><span class="line">		<span class="keyword">if</span> lbls != <span class="literal">nil</span> || origLabels != <span class="literal">nil</span> &#123;    <span class="comment">// cfg.Params 配置中添加到 url 后的参数</span></span><br><span class="line">			targets = <span class="built_in">append</span>(targets, NewTarget(lbls, origLabels, cfg.Params))</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> targets, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>过滤后的 Target 结构定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Target refers to a singular HTTP or HTTPS endpoint.</span></span><br><span class="line"><span class="keyword">type</span> Target <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// Labels before any processing.</span></span><br><span class="line">	discoveredLabels labels.Labels</span><br><span class="line">	</span><br><span class="line">    <span class="comment">// Any labels that are added to this target and its metrics.</span></span><br><span class="line">	labels labels.Labels</span><br><span class="line">    </span><br><span class="line">	<span class="comment">// Additional URL parmeters that are part of the target URL.</span></span><br><span class="line">	params url.Values</span><br><span class="line"></span><br><span class="line">	mtx        sync.RWMutex</span><br><span class="line">	lastError  error</span><br><span class="line">	lastScrape time.Time</span><br><span class="line">	health     TargetHealth</span><br><span class="line">	metadata   metricMetadataStore</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>populateLabels 根据给定的标签集和 scrape 配置构建标签集。<br>会在重新标记应用之前返回标签集作为第二个返回值。<br>如果在重新标记期间丢弃目标，则返回在应用重新标记之前找到的原始发现标签集。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// populateLabels builds a label set from the given label set and scrape configuration.</span></span><br><span class="line"><span class="comment">// It returns a label set before relabeling was applied as the second return value.</span></span><br><span class="line"><span class="comment">// Returns the original discovered label set found before relabelling was applied if the target is dropped during relabeling.</span></span><br><span class="line"><span class="comment">// 函数根据给定的 labels 和 相关配置的选项，来进行 relabel 的处理，返回的第一个参数为匹配后的结果集，第二个参数返回应用之前的 labels， 如果第一个参数为空，则表示该目标被丢失，比如 action:drop </span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">populateLabels</span><span class="params">(lset labels.Labels, cfg *config.ScrapeConfig)</span> <span class="params">(res, orig labels.Labels, err error)</span></span> &#123;</span><br><span class="line">   <span class="comment">// Copy labels into the labelset for the target if they are not set already.</span></span><br><span class="line">   scrapeLabels := []labels.Label&#123;</span><br><span class="line">      &#123;Name: model.JobLabel, Value: cfg.JobName&#125;,</span><br><span class="line">      &#123;Name: model.MetricsPathLabel, Value: cfg.MetricsPath&#125;,</span><br><span class="line">      &#123;Name: model.SchemeLabel, Value: cfg.Scheme&#125;,</span><br><span class="line">   &#125;</span><br><span class="line">   lb := labels.NewBuilder(lset)</span><br><span class="line"></span><br><span class="line">   <span class="keyword">for</span> _, l := <span class="keyword">range</span> scrapeLabels &#123;</span><br><span class="line">      <span class="keyword">if</span> lv := lset.Get(l.Name); lv == <span class="string">""</span> &#123;</span><br><span class="line">         lb.Set(l.Name, l.Value)</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="comment">// Encode scrape query parameters as labels.</span></span><br><span class="line">   <span class="keyword">for</span> k, v := <span class="keyword">range</span> cfg.Params &#123;</span><br><span class="line">      <span class="keyword">if</span> <span class="built_in">len</span>(v) &gt; <span class="number">0</span> &#123;</span><br><span class="line">         lb.Set(model.ParamLabelPrefix+k, v[<span class="number">0</span>])</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   preRelabelLabels := lb.Labels()</span><br><span class="line">   <span class="comment">// relabel.Process 进程返回给定标签集的重新标记的副本。 relabel 按输入顺序应用。</span></span><br><span class="line">   <span class="comment">// 如果删除标签集，则返回nill</span></span><br><span class="line">   <span class="comment">// 可以返回修改的输入 labelSet。</span></span><br><span class="line">   <span class="comment">// Process 会自动添加 job 和 instance 两个lable， 如果 lset 为空这说明不是监控的目标</span></span><br><span class="line">   lset = relabel.Process(preRelabelLabels, cfg.RelabelConfigs...)</span><br><span class="line"></span><br><span class="line">   <span class="comment">// Check if the target was dropped.</span></span><br><span class="line">   <span class="keyword">if</span> lset == <span class="literal">nil</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, preRelabelLabels, <span class="literal">nil</span></span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">if</span> v := lset.Get(model.AddressLabel); v == <span class="string">""</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">nil</span>, fmt.Errorf(<span class="string">"no address"</span>)</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   lb = labels.NewBuilder(lset)</span><br><span class="line"></span><br><span class="line">   <span class="comment">// addPort checks whether we should add a default port to the address.</span></span><br><span class="line">   <span class="comment">// If the address is not valid, we don't append a port either.</span></span><br><span class="line">   addPort := <span class="function"><span class="keyword">func</span><span class="params">(s <span class="keyword">string</span>)</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">      <span class="comment">// If we can split, a port exists and we don't have to add one.</span></span><br><span class="line">      <span class="keyword">if</span> _, _, err := net.SplitHostPort(s); err == <span class="literal">nil</span> &#123;</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment">// If adding a port makes it valid, the previous error</span></span><br><span class="line">      <span class="comment">// was not due to an invalid address and we can append a port.</span></span><br><span class="line">      _, _, err := net.SplitHostPort(s + <span class="string">":1234"</span>)</span><br><span class="line">      <span class="keyword">return</span> err == <span class="literal">nil</span></span><br><span class="line">   &#125;</span><br><span class="line">   addr := lset.Get(model.AddressLabel)</span><br><span class="line">   <span class="comment">// If it's an address with no trailing port, infer it based on the used scheme.</span></span><br><span class="line">   <span class="keyword">if</span> addPort(addr) &#123;</span><br><span class="line">      <span class="comment">// Addresses reaching this point are already wrapped in [] if necessary.</span></span><br><span class="line">      <span class="keyword">switch</span> lset.Get(model.SchemeLabel) &#123;</span><br><span class="line">      <span class="keyword">case</span> <span class="string">"http"</span>, <span class="string">""</span>:</span><br><span class="line">         addr = addr + <span class="string">":80"</span></span><br><span class="line">      <span class="keyword">case</span> <span class="string">"https"</span>:</span><br><span class="line">         addr = addr + <span class="string">":443"</span></span><br><span class="line">      <span class="keyword">default</span>:</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">nil</span>, fmt.Errorf(<span class="string">"invalid scheme: %q"</span>, cfg.Scheme)</span><br><span class="line">      &#125;</span><br><span class="line">      lb.Set(model.AddressLabel, addr)</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   <span class="keyword">if</span> err := config.CheckTargetAddress(model.LabelValue(addr)); err != <span class="literal">nil</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">nil</span>, err</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   <span class="comment">// Meta labels are deleted after relabelling. Other internal labels propagate to</span></span><br><span class="line">   <span class="comment">// the target which decides whether they will be part of their label set.</span></span><br><span class="line">   <span class="keyword">for</span> _, l := <span class="keyword">range</span> lset &#123;</span><br><span class="line">      <span class="keyword">if</span> strings.HasPrefix(l.Name, model.MetaLabelPrefix) &#123;</span><br><span class="line">         lb.Del(l.Name)</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   <span class="comment">// Default the instance label to the target address.</span></span><br><span class="line">   <span class="keyword">if</span> v := lset.Get(model.InstanceLabel); v == <span class="string">""</span> &#123;</span><br><span class="line">      lb.Set(model.InstanceLabel, addr)</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   res = lb.Labels()</span><br><span class="line">   <span class="keyword">for</span> _, l := <span class="keyword">range</span> res &#123;</span><br><span class="line">      <span class="comment">// Check label values are valid, drop the target if not.</span></span><br><span class="line">      <span class="keyword">if</span> !model.LabelValue(l.Value).IsValid() &#123;</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">nil</span>, fmt.Errorf(<span class="string">"invalid label value for %q: %q"</span>, l.Name, l.Value)</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">return</span> res, preRelabelLabels, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>关于 prometheus_client 相关的测试样例参见： <a href="https://github.com/DavadDi/Kubernetes_study/tree/master/prometheus_client" target="_blank" rel="noopener">https://github.com/DavadDi/Kubernetes_study/tree/master/prometheus_client</a> </p>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/09/26/xds-protocol/" title="xDS" rest="" 和="" grpc="" 协议（译）="">
+                    <div class="nextTitle">xDS REST 和 gRPC 协议（译）</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/09/07/grpc-loadbanlancer/" title="gRPC" 之="" loadbalancer="">
+                    <div class="prevTitle">gRPC 之 LoadBalancer</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/09/13/Prometheus-Discovery-K8S/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Prometheus Discovery 之 K8S 代码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#Service-Discovery-interface"><span class="toc-number">1.</span> <span class="toc-text">Service Discovery interface</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#初始化和运行"><span class="toc-number">2.</span> <span class="toc-text">初始化和运行</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#处理更新后的事件"><span class="toc-number">3.</span> <span class="toc-text">处理更新后的事件</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

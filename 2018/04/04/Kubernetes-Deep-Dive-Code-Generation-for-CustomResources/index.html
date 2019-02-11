@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kubernets深入系列： 为自定义资源生成代码（译） · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Kubernets深入系列： 为自定义资源生成代码（译）
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="CustomResourceDefinitions">CustomResourceDefinitions</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="client-gen，" code-generation="">client-gen， code-generation</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/04/04</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>作者：<a href="https://blog.openshift.com/author/stttsredhat-com/" target="_blank" rel="noopener">STEFAN SCHIMANSKI</a> OCTOBER 16, 2017</p>
+<p>翻译：狄卫华</p>
+<p>原文：Kubernetes Deep Dive: Code Generation for CustomResources</p>
+<p>原文链接：<a href="https://blog.openshift.com/kubernetes-deep-dive-code-generation-customresources/" target="_blank" rel="noopener">https://blog.openshift.com/kubernetes-deep-dive-code-generation-customresources/</a></p>
+<hr>
+<p><strong>本系列翻译链接：</strong></p>
+<ul>
+<li><a href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/" title="Kubernetes深入系列：API Server-Part 1">Kubernetes深入系列：API Server-Part 1</a></li>
+<li><a href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/" title="Kubernetes深入系列：API Server-Part 2">Kubernetes深入系列：API Server-Part 2</a></li>
+<li><a href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/" title="Kubernetes深入系列：API Server-Part 3a">Kubernetes深入系列：API Server-Part 3a</a></li>
+<li><a href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/" title="Kubernetes深入系列：为自定义资源生成代码">Kubernetes深入系列：为自定义资源生成代码</a>
+</li>
+</ul>
+<hr>
+<p>随着 Kubernetes 作为分布式应用程序的平台越广，越来越多的项目将使用其提供的扩展点功能，在更高层次上构建软件。 CustomResourceDefinitions（CRD）在Kubernetes 1.7中作为 alpha 版本引入并在1.8版中提升为beta 版本的，其对于许多用户场景来说是一个自然的构造组件，尤其是那些以某种方式实现controller（或有时称为operator）模式的构件。而且 CustomResourceDefinitions 很容易创建和使用。</p>
+<p>从 Kubernetes 1.8 版本开始，CRD 在基于 golang 的项目中的使用也变得更加方便：通过用户提供的CustomResources，我们可以使用与 Kubernetes 项目或 OpenShift 中使用的相同代码生成（code-generation）工具。这篇文章展示了代码生成工具是如何工作的以及如何使用最少的代码行将它们应用到自己的项目中，从而为您生成 deepcopy 函数/typed clients/listers/informer，所有这些的生成仅需要一个 shell 脚本调用和部分代码注释。 <a href="https://github.com/openshift-evangelists/crd-code-generation" target="_blank" rel="noopener">openshift-evangelists/crd-code-generation</a> 仓库提供了一个适合作为开始的完整项目。</p>
+<h2 id="为什么需要代码生成"><a href="#为什么需要代码生成" class="headerlink" title="为什么需要代码生成?"></a>为什么需要代码生成?</h2><p>那些在 golang 语言使用 ThirdPartyResources 或 CustomResourceDefinition 的用户可能会感到惊讶，从Kubernetes 1.8 版本开始突然需要客户端代码生成。 更具体地说，client-go 需要 <code>runtime.Object</code> 类型（golang中的CustomResources必须实现runtime.Object接口）必须具有DeepCopy方法， 这里代码生成工具中的 deepcopy-gen 生成器可以满足这一需求，其可以在 <a href="https://github.com/kubernetes/code-generator" target="_blank" rel="noopener">k8s.io/code-generator</a> 仓库中找到。</p>
+<p>除了 deepcopy-gen 还有以下大多数使用者在 CustomResources 中使用的： </p>
+<ul>
+<li>deepcopy-gen：为每种类型T生成方法： <code>func (t* T) DeepCopy() *T</code> </li>
+<li>client-gen：为 CustomResource APIGroups 生成 typed clientsets</li>
+<li>informer-gen：为 CustomResources 创建 informers，用来提供基于事件的影响接口，以方便对于服务端的 CustomResources 的变化进行对应的处理</li>
+<li>lister-gen：为 CustomResources  创建 listers，用来提供对于 GET/List 请求提供只读的缓存层</li>
+</ul>
+<p>最后两个是构建 controller（或operator）的基础。 在后续的博客文章中，我们将详细介绍 controller。 这四种代码生成器为构建构功能完备、生产环境使用的 controller 提供了强大的基础，使用的机制和软件包与Kubernetes上游 controllers 完全相同。</p>
+<p>在 <code>k8s.io/code-generator</code> 中还提供了更多的<a href="https://github.com/kubernetes/code-generator/tree/master/cmd" target="_blank" rel="noopener">生成器</a>（generator）应用在其他的场景，比如如果构建自己的聚合API 服务器，则除了版本化（versioned）类型之外，还将使用内部类型。 Conversion-gen 将在这些内部和外部类型之间创建转换函数。 Defaulter-gen 将负责处理的某些默认的字段值。</p>
+<h2 id="在项目中使用代码生成器"><a href="#在项目中使用代码生成器" class="headerlink" title="在项目中使用代码生成器"></a>在项目中使用代码生成器</h2><p>所有的 Kubernetes 代码生成器都是在  <a href="https://github.com/kubernetes/gengo" target="_blank" rel="noopener">k8s.io/gengo</a> 的基础上实现的。他们共享一些常见的命令行标志。 基本上所有的生成器都会得到一个输入包列表（<code>--input-dirs</code>），它们按类型逐个输入并输出生成的代码。 生成的代码如下：</p>
+<ul>
+<li>或者像输入文件一样进入到相同的目录，例如 deepcopy-gen（使用<code>--output-file-base</code> “zz_generated.deepcopy” 来定义文件名）。</li>
+</ul>
+<ul>
+<li>或者生成一个或多个输出包（带<code>--output-package</code>），例如 client-，informer- 和 lister-gen- （通常生成为<code>pkg/client</code>）。</li>
+</ul>
+<p>上面的描述可能听起来像使用的时候需要设置很长琐碎的命令行参数，但是这很幸运不是真的：<a href="https://github.com/kubernetes/code-generator" target="_blank" rel="noopener">k8s.io/code-generator</a>  提供了一个 shell 脚本  <a href="https://github.com/kubernetes/code-generator/blob/master/generate-groups.sh" target="_blank" rel="noopener">generator-group.sh</a>，它负责调用代码生成器以及 CustomResources 使用中的的所有特殊小要求。在项目中你所做编写一行命令，通常是在 <code>hack/update-codegen.sh</code>:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ vendor/k8s.io/code-generator/generate-groups.sh all \</span><br><span class="line">github.com/openshift-evangelist/crd-code-generation/pkg/client \ github.com/openshift-evangelist/crd-code-generation/pkg/apis \</span><br><span class="line">example.com:v1</span><br></pre></td></tr></table></figure>
+<p>脚本运行后大体会建立如下的包管理结构：</p>
+<p><img src="https://blog.openshift.com/wp-content/uploads/Screen-Shot-2017-10-16-at-17.58.28.png" alt="img"></p>
+<p>所有的 APIs 会被放在 <code>pkg/apis</code> 包内，clientsets/informers/listers 被创建在 <code>pkg/client</code>。换句话说，<code>pkg/client</code> 代码是被完全生成的，就像包含我们的 CustomResource golang语言类型的 types.go 文件下面的 <code>zz_generated.deepcopy.go</code> 文件一样。 两者都不应该手动修改，而是通过运行以下命令创建：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hack/update-codegen.sh</span><br></pre></td></tr></table></figure>
+<p>通常，还会有一个 <code>hack/verify-codegen.sh</code> 脚本，如果任何生成的文件不是最新的，它将以非零的返回码终止。 这对于放入CI 脚本非常有帮助：如果开发人员偶然修改了文件或文件过时，CI 会产生告警并通知。</p>
+<h2 id="通过-Tags-控制生成的代码"><a href="#通过-Tags-控制生成的代码" class="headerlink" title="通过 Tags 控制生成的代码"></a>通过 Tags 控制生成的代码</h2><p>虽然代码生成器的某些行为是通过上述的命令行标志（特别是要处理的包）控制的，但通过 go 文件中的标记可以控制更多的属性。</p>
+<p>有两钟类型的 Tag：</p>
+<ul>
+<li>全局的 Tag 定义在 <code>package</code> 级别的 <code>doc.go</code>文件中</li>
+<li>局部的 Tag 定义在要处理的类型</li>
+</ul>
+<p>通常标签的规则为<code>// +tag-name</code> 或 <code>// +tag-name=value</code>，它们定义在注释中。 根据标签的不同，注释的位置可能很重要。 有些标签必须位于类型的正上方（或全局标签的<code>package</code>行），有些标签必须与类型（<code>package</code>行）分开，并且间隔至少有一条空行。 我们正在努力使得版本1.9 中（PR <a href="https://github.com/kubernetes/kubernetes/pull/53579" target="_blank" rel="noopener">#53579</a> 和 Issue  <a href="https://github.com/kubernetes/kubernetes/issues/53893" target="_blank" rel="noopener">#53893</a>）其定义更加一致且不太容易出错。 间隔有空行可能很重要，能够更好地遵循 example 和遵守基本的规则。</p>
+<h3 id="全局-Tag"><a href="#全局-Tag" class="headerlink" title="全局 Tag"></a>全局 Tag</h3><p>全局的 tag 定义在 包文件的 <code>doc.go</code> 文件中。一个典型的<code>pkg/apis/&lt;apigroup&gt;/&lt;version&gt;/doc.go</code> 定义看起来像下面这样：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +k8s:deepcopy-gen=package,register</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">// Package v1 is the v1 version of the API.</span></span><br><span class="line"><span class="comment">// +groupName=example.com</span></span><br><span class="line"><span class="keyword">package</span> v1</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>译者注：在当前版本 1.9 和 1.10 中， register 不再需要</p>
+</blockquote>
+<p>注释表明 deepcopy-gen 默认为该包中的每个类型创建 deepcopy 方法。如果您有不需要 deepcopy 的类型，可以通过设置此类型局部 Tag <code>// +k8s:deepcopy-gen=false</code> 来实现。如果您不启用 package 范围内的 deepcopy 函数，则必须通过 <code>// +k8s:deepcopy-gen=true</code> 来设置需要的类型。</p>
+<p>注意：上面示例的值中的 <code>register</code> 关键字将启用将 deepcopy 方法注册到 scheme 中。这将在Kubernetes 1.9中完全消失，因为 scheme 不再负责执行 <code>runtime.Objects</code> 的深层次的复制。取而代之只需调用 <code>yourobject.DeepCopy()</code> 或 <code>yourobject.DeepCopyObject()</code>。你现在就可以在基于1.8 版本的项目中做到这一点，因为它更快，更不易出错。此外，你将准备1.9这将需要这种方式。</p>
+<p>最后，<code>// +groupName=example.com</code> 定义完全限定的  API 组名称。如果填写错误，客户端会产生错误的代码。需要注意的是，这个 Tag 必须位于 package 上方的注释块中（参见 <a href="https://github.com/kubernetes/kubernetes/issues/53893" target="_blank" rel="noopener">Issue #53893</a>）。</p>
+<h3 id="局部-Tag"><a href="#局部-Tag" class="headerlink" title="局部 Tag"></a>局部 Tag</h3><p>局部标签直接写在 API 类型的上面或写在它上面的第二个注释块中。 以下是关于 CustomResources 我们在 <a href="(https://blog.openshift.com/kubernetes-deep-dive-api-server-part-3a/">API Server 深入系列</a>) 文章中定义的golang 类型 <a href="https://github.com/openshift-evangelists/crd-code-generation/blob/master/pkg/apis/example.com/v1/types.go" target="_blank" rel="noopener">types.go</a> 的样例：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +genclient</span></span><br><span class="line"><span class="comment">// +genclient:noStatus</span></span><br><span class="line"><span class="comment">// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Database describes a database.</span></span><br><span class="line"><span class="keyword">type</span> Database <span class="keyword">struct</span> &#123;</span><br><span class="line">    metav1.TypeMeta   <span class="string">`json:",inline"`</span></span><br><span class="line">    metav1.ObjectMeta <span class="string">`json:"metadata,omitempty"`</span></span><br><span class="line"></span><br><span class="line">    Spec DatabaseSpec <span class="string">`json:"spec"`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// DatabaseSpec is the spec for a Foo resource</span></span><br><span class="line"><span class="keyword">type</span> DatabaseSpec <span class="keyword">struct</span> &#123;</span><br><span class="line">    User     <span class="keyword">string</span> <span class="string">`json:"user"`</span></span><br><span class="line">    Password <span class="keyword">string</span> <span class="string">`json:"password"`</span></span><br><span class="line">    Encoding <span class="keyword">string</span> <span class="string">`json:"encoding,omitempty"`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// DatabaseList is a list of Database resources</span></span><br><span class="line"><span class="keyword">type</span> DatabaseList <span class="keyword">struct</span> &#123;</span><br><span class="line">    metav1.TypeMeta <span class="string">`json:",inline"`</span></span><br><span class="line">    metav1.ListMeta <span class="string">`json:"metadata"`</span></span><br><span class="line"></span><br><span class="line">    Items []Database <span class="string">`json:"items"`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意，我们已默认启用所有类型的 deepcopy，也可以选择禁止。 但是样例中的类型都是 API 类型，需要使用 deepcopy。 因此我们不需要在此示例中的  <a href="https://github.com/openshift-evangelists/crd-code-generation/blob/master/pkg/apis/example.com/v1/types.go" target="_blank" rel="noopener">types.go</a> 中启用或禁止 deepcopy，而只能在  <a href="https://github.com/openshift-evangelists/crd-code-generation/blob/master/pkg/apis/example.com/v1/doc.go" target="_blank" rel="noopener">doc.go</a> 中的package 设置。</p>
+<h4 id="RUNTIME-OBJECT-和-DEEPCOPYOBJECT"><a href="#RUNTIME-OBJECT-和-DEEPCOPYOBJECT" class="headerlink" title="RUNTIME.OBJECT 和 DEEPCOPYOBJECT"></a>RUNTIME.OBJECT 和 DEEPCOPYOBJECT</h4><p>这个特殊的deepcopy tag 需要进一步的解释：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object</span></span><br></pre></td></tr></table></figure>
+<p>如果您尝试在基于Kubernetes 1.8的 client-go 上使用 CustomResources — 有些人可能已经很高兴了，因为他们意外地将 master 分支的k8s.op/apmachinery 放到了 vender 目录– 您遇到了 CustomResource 类型会出现的编译器错误：没有实现 <code>runtime.Object</code>，因为 <code>DeepCopyObject() runtime.Object</code>没有在你的类型上定义。 原因是在 1.8 版本中，<code>runtime.Object</code> 接口是用 <a href="(https://github.com/kubernetes/apimachinery/blob/7089aafd1ef57551192f6ec14c5ed1f49494ccd2/pkg/runtime/interfaces.go#L237">这个方法签名</a> ) 进行了扩展，因此也是每个 <code>runtime.Object</code> 必须实现<code>DeepCopyObject</code>。 <code>DeepCopyObject() runtime.Object</code>的实现是非常容易的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">func (in *T) DeepCopyObject() runtime.Object &#123;</span><br><span class="line">    if c := in.DeepCopy(); c != nil &#123;</span><br><span class="line">        return c</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        return nil</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>幸运的是您不必为每种类型都实现此功能，只需将以下局部 tag 放在 顶级 API 类型的上方即可：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object</span></span><br></pre></td></tr></table></figure>
+<p>在我们上面的例子中，<code>Database</code> 和 <code>DatabaseList</code> 都是顶级类型，因为它们被用作 <code>runtime.Objects</code>。 有一个经验法则，顶级类型是那些具有 <code>metav1.TypeMetaembedded</code>嵌入的类型。 其他的类型，则是客户端为使用 client-gen 创建的类型。</p>
+<p>需要注意的是，在定义具有某种接口类型字段的 API 类型（如字段<code>SomeInterface</code>）的情况下，<code>// +k8s:deepcopy-gen:interfaces</code> 仍然可以被使用。 此时 <code>// +k8s:deepcopy-gen:interfaces=example.com/pk /apis/example.SomeInterface</code> 将会生成一个 <code>DeepCopySomeInterface() SomeInterface</code> 方法。 这允许它以类型正确的方式对这些字段进行深度复制。</p>
+<h4 id="CLIENT-GEN-TAGS"><a href="#CLIENT-GEN-TAGS" class="headerlink" title="CLIENT-GEN TAGS"></a>CLIENT-GEN TAGS</h4><p>最后，有些标签来控制 client-gen，我们在例子中看到了两个标签：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +genclient</span></span><br><span class="line"><span class="comment">// +genclient:noStatus</span></span><br></pre></td></tr></table></figure>
+<p>第一个 Tag 告诉 client-gen 创建一个这种类型的客户端（总是选择启用）。 <strong>请注意，您不必将它放在 API 对象的<code>List</code> 类型的上方</strong>。</p>
+<p>第二个 Tag 告诉  client-gen 这种类型不通过<code>/status</code>子资源路径控制 spec-status。 生成的客户端将没有<code>UpdateStatus</code> 方法（如果不设置该参数，只要在结构中找到<code>Status</code>字段，client-gen 就会无脑地生成<code>UpdateStatus</code>方法）。 <code>/status</code> 子资源尽在 1.8 版本的go语言实现中被支持。 但是由于<a href="https://github.com/kubernetes/community/pull/913" target="_blank" rel="noopener">PR 913</a>中的 CustomResources 讨论了子资源，所以这可能会很快发生变化。</p>
+<p>对于集群范围的资源，您必须使用 Tag：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +genclient:nonNamespaced</span></span><br></pre></td></tr></table></figure>
+<p>对于特殊用途的客户端，您可能还需要详细控制客户端提供的 HTTP 方法。 这可以使用几个 Tag 完成，例如：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// +genclient:noVerbs</span></span><br><span class="line"><span class="comment">// +genclient:onlyVerbs=create,delete</span></span><br><span class="line"><span class="comment">// +genclient:skipVerbs=get,list,create,update,patch,delete,deleteCollection,watch</span></span><br><span class="line"><span class="comment">// +genclient:method=Create,verb=create,result=k8s.io/apimachinery/pkg/apis/meta/v1.Status</span></span><br></pre></td></tr></table></figure>
+<p>前三个应该是不言而喻的，但最后一个需要一些介绍， 上面代码中这个 Tag 的类型将是仅创建的，不会返回 API 类型本身，而是返回 <code>metav1.Status</code>。 对于 CustomResources 来说，这没什么意义，但对于用 golang 编写的用户提供的 API 服务器，这些资源可以存在，并且可以在实践中用到，例如在OpenShift API 中。</p>
+<h2 id="在主函数中使用类型化客户端"><a href="#在主函数中使用类型化客户端" class="headerlink" title="在主函数中使用类型化客户端"></a>在主函数中使用类型化客户端</h2><p>虽然基于Kubernetes 1.7及更早版本的大多数示例都使用 <a href="https://github.com/kubernetes/client-go/tree/master/dynamic" target="_blank" rel="noopener">client-go dynamic client</a> 管理 CustomResources，但本地 Kubernetes API 类型在很长一段时间内拥有更方便的类型化客户端。 这在 1.8 中有所改变：如上所述，client-gen 为您的自定义类型创建了一个原生的，功能全面且易于使用的类型化客户端。 实际上，client-gen 并不知道您是将它应用于 CustomResource 类型还是本地类型。</p>
+<p>因此，使用这个客户端与使用客户端 Kubernetes 客户端完全等价。 这是一个非常简单的例子：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> (</span><br><span class="line">    ...</span><br><span class="line">    metav1 <span class="string">"k8s.io/apimachinery/pkg/apis/meta/v1"</span></span><br><span class="line">    <span class="string">"k8s.io/client-go/tools/clientcmd"</span></span><br><span class="line">    examplecomclientset <span class="string">"github.com/openshift-evangelist/crd-code-generation/pkg/client/clientset/versioned"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> (</span><br><span class="line">    kuberconfig = flag.String(<span class="string">"kubeconfig"</span>, <span class="string">""</span>, <span class="string">"Path to a kubeconfig. Only required if out-of-cluster."</span>)</span><br><span class="line">    master      = flag.String(<span class="string">"master"</span>, <span class="string">""</span>, <span class="string">"The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster."</span>)</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">    flag.Parse()</span><br><span class="line"></span><br><span class="line">    cfg, err := clientcmd.BuildConfigFromFlags(*master, *kuberconfig)</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        glog.Fatalf(<span class="string">"Error building kubeconfig: %v"</span>, err)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    exampleClient, err := examplecomclientset.NewForConfig(cfg)</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        glog.Fatalf(<span class="string">"Error building example clientset: %v"</span>, err)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    list, err := exampleClient.ExampleV1().Databases(<span class="string">"default"</span>).List(metav1.ListOptions&#123;&#125;)</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        glog.Fatalf(<span class="string">"Error listing all databases: %v"</span>, err)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> _, db := <span class="keyword">range</span> list.Items &#123;</span><br><span class="line">        fmt.Printf(<span class="string">"database %s with user %q\n"</span>, db.Name, db.Spec.User)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>它可以与 kubeconfig 文件一起使用，实际上它可以与 kubectl 和 Kubernetes 客户端一起使用。</p>
+<p>与使用动态客户端的传统 TPR 或 CustomResource 代码不同，您不必进行类型转换。 相反，实际的客户调用看起来完全是本地的，它是：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list, err := exampleClient.ExampleV1().Databases(<span class="string">"default"</span>).List(metav1.ListOptions&#123;&#125;)</span><br></pre></td></tr></table></figure>
+<p>结果是您的集群中所有数据库的示例中的一个 <code>DatabaseList</code>。 如果您将类型切换到集群范围（即不使用名称空间，请不要忘记告诉客户端使用 <code>// +genclient:nonNamespaced</code> tag），这些调用变成</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list, err := exampleClient.ExampleV1().Databases().List(metav1.ListOptions&#123;&#125;)</span><br></pre></td></tr></table></figure>
+<h2 id="在-Golang-语言中创建-CustomResourceDefinition"><a href="#在-Golang-语言中创建-CustomResourceDefinition" class="headerlink" title="在 Golang 语言中创建 CustomResourceDefinition"></a>在 Golang 语言中创建 CustomResourceDefinition</h2><p>由于这个问题经常出现，所以这里介绍一下如何通过 golang 代码编程创建一个CRD。</p>
+<p>client-gen 总是创建所谓的客户端集（clientsets）。客户端集将一个或多个API组绑定到一个客户端内。通常这些API组来自一个仓库，并放置在一个基本package内，例如本博客文章中的 <code>pkg/apis</code>或 Kubernetes 的 <code>k8s.io/api</code> 。</p>
+<p>CustomResourceDefinitions 由 <a href="https://github.com/kubernetes/apiextensions-apiserver repository" target="_blank" rel="noopener">kubernetes/apiextensions-apiserver</a> 仓库提供。此 API server[备注：apiextensions-apiserver]（也可以独立启动）可以由 kube-apiserver 嵌入，以便 CRD 在每个 Kubernetes 群集上都可用。创建 CRD 的客户端位于 apiextensions-apiserver 仓库中，当然也使用 client-gen。在阅读完这篇博客之后，你应该不会惊讶和意外在 <a href="https://github.com/kubernetes/apiextensions-apiserver/tree/master/pkg/client" target="_blank" rel="noopener">kubernetes/apiextensions-apiserver/tree/master/pkg/client</a> 仓库中找到创建的客户端。创建客户端实例以及如何创建CRD 代码样例如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> (</span><br><span class="line">    ...</span><br><span class="line">    apiextensionsclientset <span class="string">"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset”</span></span><br><span class="line"><span class="string">)</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">apiextensionsClient, err := apiextensionsclientset.NewForConfig(cfg)</span></span><br><span class="line"><span class="string">...</span></span><br><span class="line"><span class="string">createdCRD, err := apiextensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Create(yourCRD)</span></span><br></pre></td></tr></table></figure>
+<p>需要注意的是在创建完成之后，您必须等待新建立的 CRD 上的已建立<code>Established</code>。 只有这样，kube-apiserver 才会开始为资源服务。 如果您不等待处理这种情况，则在未就绪之前每个CRD 操作都将返回一个 404 HTTP 状态码。</p>
+<h2 id="进一步的资料"><a href="#进一步的资料" class="headerlink" title="进一步的资料"></a>进一步的资料</h2><p>目前，Kubernetes generators 相关文档有很大的改进空间，任何形式的帮助都是非常受欢迎的。 它们从刚从 Kubernetes 项目中独立抽取到到 <a href="https://github.com/kubernetes/code-generator" target="_blank" rel="noopener">k8s.io/code-generator</a> 中 以方便 CustomResource 用户公开使用。 随着时间的推移，这些文档肯定会有所改进，这篇博文也旨在为此做出贡献。</p>
+<p>有关不同 generators 的更多信息，通常很好的方法是查看 Kubernetes内部的例子（例如 <a href="https://github.com/kubernetes/api" target="_blank" rel="noopener">k8s.io/api</a>），[OpenShift](<a href="https://github.com/openshift/origin（具有许多高级用例）以及" target="_blank" rel="noopener">https://github.com/openshift/origin（具有许多高级用例）以及</a> generators 自身代码：</p>
+<ul>
+<li><a href="https://github.com/kubernetes/gengo/tree/master/examples/deepcopy-gen 在  [main.go](https://github.com/kubernetes/gengo/blob/master/examples/deepcopy-gen/main.go#L17" target="_blank" rel="noopener">Deepcopy-gen</a> 代码中有些介绍的文档</li>
+<li><a href="https://github.com/kubernetes/code-generator/tree/master/cmd/client-gen" target="_blank" rel="noopener">Client-gen</a> 的相关文档可以参考 <a href="https://github.com/kubernetes/community/blob/master/contributors/devel/generating-clientset.md" target="_blank" rel="noopener">这里</a>.</li>
+<li><a href="https://github.com/kubernetes/code-generator/tree/master/cmd/informer-gen" target="_blank" rel="noopener">Informer-gen</a> 和 <a href="https://github.com/kubernetes/code-generator/tree/master/cmd/lister-gen" target="_blank" rel="noopener">lister-gen</a> 目前没有进一步的文档，但是 <a href="https://github.com/kubernetes/code-generator/blob/master/generate-groups.sh" target="_blank" rel="noopener">generate-groups.sh</a> 显示了他们之间如何被调用的。</li>
+</ul>
+<p>本博客文章中的所有示例均可作为功能齐全的仓库提供，可以轻松地作为您自己实验的蓝图：</p>
+<ul>
+<li><a href="https://github.com/openshift-evangelists/crd-code-generation。" target="_blank" rel="noopener">https://github.com/openshift-evangelists/crd-code-generation。</a></li>
+</ul>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/" title="Kubernets深入系列：" api="" server="" -="" part="" 1（译）="">
+                    <div class="nextTitle">Kubernets深入系列： API Server - part 1（译）</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/04/02/Google-Cloud-Translation-API/" title="Google" cloud="" translation="" api="" 入门="">
+                    <div class="prevTitle">Google Cloud Translation API 入门</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Kubernets深入系列： 为自定义资源生成代码（译）"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#为什么需要代码生成"><span class="toc-number">1.</span> <span class="toc-text">为什么需要代码生成?</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#在项目中使用代码生成器"><span class="toc-number">2.</span> <span class="toc-text">在项目中使用代码生成器</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#通过-Tags-控制生成的代码"><span class="toc-number">3.</span> <span class="toc-text">通过 Tags 控制生成的代码</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#全局-Tag"><span class="toc-number">3.1.</span> <span class="toc-text">全局 Tag</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#局部-Tag"><span class="toc-number">3.2.</span> <span class="toc-text">局部 Tag</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#RUNTIME-OBJECT-和-DEEPCOPYOBJECT"><span class="toc-number">3.2.1.</span> <span class="toc-text">RUNTIME.OBJECT 和 DEEPCOPYOBJECT</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#CLIENT-GEN-TAGS"><span class="toc-number">3.2.2.</span> <span class="toc-text">CLIENT-GEN TAGS</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#在主函数中使用类型化客户端"><span class="toc-number">4.</span> <span class="toc-text">在主函数中使用类型化客户端</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#在-Golang-语言中创建-CustomResourceDefinition"><span class="toc-number">5.</span> <span class="toc-text">在 Golang 语言中创建 CustomResourceDefinition</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#进一步的资料"><span class="toc-number">6.</span> <span class="toc-text">进一步的资料</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

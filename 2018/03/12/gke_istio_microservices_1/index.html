@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译） · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="istio">istio</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="microservices">microservices</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="SpringCloud">SpringCloud</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/03/12</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h1 id="使用Istio简化微服务系列一：如何用Isito解决Spring-Cloud-Netflix部署微服务的挑战"><a href="#使用Istio简化微服务系列一：如何用Isito解决Spring-Cloud-Netflix部署微服务的挑战" class="headerlink" title="使用Istio简化微服务系列一：如何用Isito解决Spring Cloud Netflix部署微服务的挑战?"></a>使用Istio简化微服务系列一：如何用Isito解决Spring Cloud Netflix部署微服务的挑战?</h1><p>Original 2018-03-12 姚炳雄 译 <a href="https://mp.weixin.qq.com/s?__biz=MzU0MTMyMDg1NQ==&amp;mid=2247483934&amp;idx=1&amp;sn=5606f437471c36181c2a3949e1552528&amp;chksm=fb2af1e6cc5d78f0970d0330e0af7d5553d2e5733c2980d29289bac513744370c81f57fd02d8&amp;scene=21##" target="_blank" rel="noopener">ServiceMesh中文网</a></p>
+<p>作者：Nithin Mallya</p>
+<p>翻译：姚炳雄<br>原文：Simplifying Microservices with Istio in Google Kubernetes Engine — Part I</p>
+<p>原文链接：<a href="https://medium.com/google-cloud/simplifying-microservices-with-istio-in-google-kubernetes-engine-part-i-849555f922b8" target="_blank" rel="noopener">https://medium.com/google-cloud/simplifying-microservices-with-istio-in-google-kubernetes-engine-part-i-849555f922b8</a></p>
+<hr>
+<p><strong>本系列翻译链接：</strong></p>
+<ul>
+<li><a href="/2018/03/12/gke_istio_microservices_1/" title="在 GKE 上使用 Istio 简化微服务-Part I">在 GKE 上使用 Istio 简化微服务-Part I</a></li>
+<li><a href="/2018/03/14/gke_istio_microservices_2/" title="在 GKE 上使用 Istio 简化微服务-Part II">在 GKE 上使用 Istio 简化微服务-Part II</a></li>
+<li><a href="/2018/03/23/gke_istio_microservices_3/" title="在 GKE 上使用 Istio 简化微服务-Part III">在 GKE 上使用 Istio 简化微服务-Part III</a>
+</li>
+</ul>
+<hr>
+<blockquote>
+<p>我所写的关于 Istio 的文章是 Istio <a href="https://istio.io/docs/" target="_blank" rel="noopener">非常棒的官方文档</a> 中的一部分。如果想了解更多，请阅读官方文档。</p>
+</blockquote>
+<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>Istio 简化了服务间的通信，流量涨落，容错，性能监控，跟踪等太多太多。如何利用它来帮我们从各微服务中抽象萃取出基础架构和功能切面？ </p>
+<blockquote>
+<p>我写的这些关于 Istio 的文章是 Istio官网文档的子集。读官网文档可了解更多。 </p>
+<p> <strong>注意</strong>:：如果你很熟悉微服务，请跳过背景介绍这段。</p>
+</blockquote>
+<p>在本系列的第一部分，将涵盖如下内容：</p>
+<ul>
+<li><strong>背景</strong>： 单体应用及微服务介绍 </li>
+<li><strong>Spring Cloud Netflix Stack</strong>及其优势 </li>
+<li><strong>Istio</strong> 介绍</li>
+<li><strong>Istio的服务</strong>-<strong>服务通信举例</strong> </li>
+</ul>
+<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><blockquote>
+<p>过去，我们运维着“能做一切”的大型单体应用程序。 这是一种将产品推向市场的很好的方式，因为刚开始我们也只需要让我们的第一个应用上线。而且我们总是可以回头再来改进它的。部署一个大应用总是比构建和部署多个小块要容易。</p>
+<p>然而，这样的应用开发将导致“爆炸式的”工作量（我们经过数月的工作后将再次部署整个应用），并且增量变更将因为构建/测试/部署/发布周期等的复杂特性而来来回回折腾很长时间。但是，如果你是产品负责人，尤其是在部署一个新版本后发现一个严重的 Bug，那么这就不仅仅是多少钱的问题。 这甚至可能导致整个应用回滚。相对于比较小的组件来说，将这样的一个大型应用部署到云上并弹性扩展它们也并不容易。</p>
+<h3 id="进入微服务"><a href="#进入微服务" class="headerlink" title="进入微服务"></a>进入微服务</h3><p>微服务是运行在自己的进程中的可独立部署的服务套件。 他们通常使用 HTTP 资源进行通信，每个服务通常负责整个应用中的某一个单一的领域。 在流行的电子商务目录例子中，你可以有一个商品条目服务，一个审核服务和一个评价服务，每个都只专注一个领域。<br>用这种方法来帮助分布式团队各自贡献各种服务，而不需要在每个服务变更时去构建/测试/部署整个应用，而且调试也无需进入彼此的代码。 将服务部署到云上也更容易，因为独立的服务就能按需进行自动弹性扩展。</p>
+<p>用这种方法让多语言服务（使用不同语言编写的服务）也成为可能，这样我们就可以让 Java/C++  服务执行更多的计算密集型工作，让 Rails / Node.js 服务更多来支持前端应用等等。</p>
+</blockquote>
+<h3 id="Spring-Cloud-Netflix"><a href="#Spring-Cloud-Netflix" class="headerlink" title="Spring Cloud Netflix:"></a>Spring Cloud Netflix:</h3><p>随着微服务的流行，简化服务的创建和管理的框架如雨后春笋。 我个人在2015年最喜欢的是 Netflix OSS 栈（Spring Cloud Netflix），它让我用一个非常简单的方式，通过 Spring Tool Suite IDE 来创建 Java 微服务。</p>
+<p>我可以通过 Netflix 套件获得以下功能（图1）：</p>
+<ul>
+<li><p>通过 <strong>Eureka</strong> 进行服务注册- 用于注册和发现服务</p>
+</li>
+<li><p>用 <strong>Ribbon</strong> 做客户端的负载均衡- 客户端可以选择将其请求发送到哪个服务器。</p>
+</li>
+<li><p>声明 REST 客户端 Feign 与其他服务交谈。在内部，使用 Ribbon。</p>
+</li>
+<li><p>API 网关用 Zuul —单一入口点来管理所有 API 调用，并按路由规则路由到微服务。</p>
+</li>
+<li><p>Hystrix 做熔断器 — 处理容错能力以及在短时间内关闭通信信道（断开回路）并在目标服务宕机时返回用户友好的响应。</p>
+</li>
+<li><p>用 Hystrix 和 Turbine 做仪表板 —— 可视化流量和熔断</p>
+</li>
+</ul>
+<p><img src="https://cdn-images-1.medium.com/max/2000/1*0CPG9sbX_Eer9DWyNbOEKw.jpeg" alt="img"></p>
+<p>图1: Spring Cloud Netflix 实现微服务</p>
+<p>当然，这种构建和部署应用的方法也带来了它的挑战。</p>
+<h2 id="挑战"><a href="#挑战" class="headerlink" title="挑战"></a>挑战</h2><blockquote>
+<p><strong>部署</strong>：怎样才能通过一种统一一致的方式将我们的服务部署到云中，并确保它们始终可用，并让它们按需进行自动弹性扩展？</p>
+<p><strong>横切关注点：</strong>如何对<strong>每个微服务代码改动很少甚至不改代码</strong>的情况下能获得更多我们所看到的 Spring Cloud Netflix 中所实现的功能？ 另外，<strong>如何处理用不同语言编写的服务</strong>？</p>
+</blockquote>
+<h2 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h2><blockquote>
+<p><strong>部署</strong>：Kubernetes 已经为在 Google Kubernetes Engine（GKE）中高效部署和编排 Docker 容器铺平了道路。 Kubernetes 抽象出基础架构，并让我们通过 API 与之进行交互。 请参阅本文末尾的链接以获取更多详细信息。</p>
+<p><strong>横切关注点</strong>：我们可以用 Istio。 Istio 官网上的解释称：“ Istio 提供了一种简单的方法，来创建一个提供负载均衡、服务间认证、监控等的服务网络，且不需要对服务代码进行任何更改。 通过在整个环境中部署专门的 sidecar 代理服务，来拦截微服务间的所有网络通信，整个配置和管理通过 Istio的控制面板来做。”</p>
+</blockquote>
+<h3 id="Istio介绍："><a href="#Istio介绍：" class="headerlink" title="Istio介绍："></a>Istio介绍：</h3><p>换句话说，通过Istio，我们可以创建我们的微服务，并将它们与“轻量级 Sidecar 代理”一起部署（下图2），以处理我们的许多横切需求，例如：</p>
+<ul>
+<li><p>服务到服务的通信</p>
+</li>
+<li><p>追踪</p>
+</li>
+<li><p>熔断（类 Hystrix 功能）和重试</p>
+</li>
+<li><p>性能监控和仪表板（类似于 Hystrix 和 Turbine 仪表板）</p>
+</li>
+<li><p>流量路由（例如：发送 x％ 流量到 V2 版本的应用实例），金丝雀部署</p>
+</li>
+<li><p>一个额外的红利（特别是如果您正在处理医疗保健中的 PHI 等*<em>敏感数据</em>时）出站（Istio 服务网格之外的外部可调用服务）需要明确配置，并且可以阻止在服务网格之外的做特殊调用的服务。</p>
+</li>
+</ul>
+<p><img src="https://cdn-images-1.medium.com/max/2000/1*Ywx4FCF4923ZAZjX8a_kOQ.jpeg" alt=""></p>
+<p><img src="data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==" alt="img"> 图2: 用 Envoy 代理来做多语言服务间的通信</p>
+<p>在上图2中，我们已经去掉了图1中的许多组件，并添加了一个新组件（Envoy Proxy）。 任何服务（A）如需与另一个服务（B）交谈，则提前对它的代理做路由规则预配置，以路由到对方的代理进行通信。 代理与代理交谈。 由于所有通信都是通过代理进行的，所以很容易监控流量，收集指标，根据需要使用熔断规则等。</p>
+<blockquote>
+<p>对横切面的声明式的配置规则和策略，无需更改任何服务代码，让我们可以更专注于最重要的事情：构建高业务价值的高质量的服务。</p>
+</blockquote>
+<p>从高的层面看，Istio 有如下组件：</p>
+<ul>
+<li><strong>Envoy：</strong>一个高性能，低空间占用的代理，支持服务之间的通信，并有助于负载平衡，服务发现等；</li>
+<li><strong>Mixer</strong>：负责整个生态（服务网格）中所有服务的访问控制策略，并收集通过 Envoy 或其他服务发送的遥测信息；</li>
+<li><strong>Pilot：</strong>帮助发现服务，流量缓慢调整和容错（熔断，重试等）；</li>
+<li><strong>Istio-Auth</strong> <strong>：</strong>用于服务间认证以及都使用 TLS 的终端用户认证。本文中的示例不使用 Istio-Auth。</li>
+</ul>
+<h3 id="用Istio进行服务—服务通信"><a href="#用Istio进行服务—服务通信" class="headerlink" title="用Istio进行服务—服务通信"></a>用Istio进行服务—服务通信</h3><p><strong>让我们在练习中了解它！</strong></p>
+<p>我们将举一个简单的例子，展示3个通过 Envoy 代理进行通信的微服务。它们已经用 Node.js 写好，但如前所述，你可以用任何语言。</p>
+<p><img src="https://cdn-images-1.medium.com/max/2000/1*jcZYzlqHvueD5lA-1BLcCA.jpeg" alt="img"></p>
+<p>图3: 用于提取宠物细节的3个微服务的逻辑视图</p>
+<ol>
+<li><p>宠物服务：通过调用 PetDetailsService 和 PetMedicalHistoryService 来返回宠物的信息和病史。 它将在9080端口上运行。</p>
+</li>
+<li><p>宠物详细信息服务：返回宠物信息，如姓名，年龄，品种，拥有者等，它将在端口9081上运行。</p>
+</li>
+<li><p>宠物医疗历史信息服务：返回宠物的病史（疫苗接种）。 它将在9082端口运行。</p>
+</li>
+</ol>
+<p><strong>步骤：</strong></p>
+<p>在 GKE中创建一个 Kubernetes 集群（我叫 nithinistiocluster）。 确保缺省服务帐户具有以下权限：<code>roles / container.admin</code>（Kubernetes Engine Admin）。</p>
+<p>按照 <a href="https://istio.io/docs/setup/kubernetes/quick-start.html" target="_blank" rel="noopener">https://istio.io/docs/setup/kubernetes/quick-start.html</a>  中的说明安装 istio。</p>
+<p><strong>1.</strong> 现在，我们准备将我们的应用程序（上述3个服务）部署到 GKE，并将边车代理注入到部署中。</p>
+<p><strong>2.</strong> 在 github 仓库中，您将看到4个目录（安装各种组件时创建的istio目录和我的微服务的3个目录）。</p>
+<p><img src="https://cdn-images-1.medium.com/max/2000/1*MAf0A-CzGAijfUD5qbldQA.png" alt=""></p>
+<p><strong>3.</strong> 对于每个微服务，我在 petinfo.yaml 文件的 kube 目录中创建了相应的 Kubernete s部署和服务。 服务名为<strong>宠物服务</strong>，<strong>宠物详细信息服务</strong>和<strong>宠物医疗历史信息服务</strong>。 由于PetServic e可以公开访问，因此它有一个指向 petservice 的 Kubernetes Ingress。</p>
+<p><strong>4.</strong> 你可以转到每个服务目录，在 <strong>deploy.sh</strong> 文件中更新项目和群集名称并运行它。 它构建服务，创建 Docker 镜像，将其上传到Google Container Registry，然后运行 istioct l 以注入 Envoy 代理。 例如，对于 PetService，它看起来像：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/usr/bin/env bash</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">export</span> PROJECT=nithinistioproject </span><br><span class="line"><span class="built_in">export</span> CONTAINER_VERSION=feb4v2</span><br><span class="line"><span class="built_in">export</span> IMAGE=gcr.io/<span class="variable">$PROJECT</span>/petservice:<span class="variable">$CONTAINER_VERSION</span></span><br><span class="line"><span class="built_in">export</span> BUILD_HOME=.</span><br><span class="line"></span><br><span class="line">gcloud config <span class="built_in">set</span> project <span class="variable">$PROJECT</span></span><br><span class="line">gcloud container clusters get-credentials nithinistiocluster --zone us-central1<span class="_">-a</span> --project <span class="variable">$PROJECT</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">echo</span> <span class="variable">$IMAGE</span></span><br><span class="line">docker build -t petservice -f <span class="string">"<span class="variable">$&#123;PWD&#125;</span>/Dockerfile"</span> <span class="variable">$BUILD_HOME</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">'Successfully built '</span> <span class="variable">$IMAGE</span></span><br><span class="line"></span><br><span class="line">docker tag petservice <span class="variable">$IMAGE</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">'Successfully tagged '</span> <span class="variable">$IMAGE</span></span><br><span class="line"></span><br><span class="line"><span class="comment">#push to google container registry</span></span><br><span class="line">gcloud docker -- push <span class="variable">$IMAGE</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">'Successfully pushed to Google Container Registry '</span> <span class="variable">$IMAGE</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># inject envoy proxy</span></span><br><span class="line">kubectl apply -f &lt;(istioctl kube-inject -f <span class="string">"<span class="variable">$&#123;PWD&#125;</span>/kube/petinfo.yaml"</span>)</span><br></pre></td></tr></table></figure>
+<p>在上面的代码中，高亮显示的行显示了我们如何使用 Istio 命令行工具（istioctl）来将代理注入到我们的各种 Kubernetes 部署中。</p>
+<p>Petservice 目录下的 petinfo.yaml 文件包含服务、部署和 Ingress的配置。 看起来像：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Service</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">petservice</span></span><br><span class="line"><span class="attr">  labels:</span></span><br><span class="line"><span class="attr">    app:</span> <span class="string">petservice</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  ports:</span></span><br><span class="line"><span class="attr">  - port:</span> <span class="number">9080</span></span><br><span class="line"><span class="attr">    name:</span> <span class="string">http</span></span><br><span class="line"><span class="attr">  selector:</span></span><br><span class="line"><span class="attr">    app:</span> <span class="string">petservice</span></span><br><span class="line"><span class="meta">---</span></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">extensions/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">petservice-v1</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  replicas:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">  template:</span></span><br><span class="line"><span class="attr">    metadata:</span></span><br><span class="line"><span class="attr">      labels:</span></span><br><span class="line"><span class="attr">        app:</span> <span class="string">petservice</span></span><br><span class="line"><span class="attr">        version:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">    spec:</span></span><br><span class="line"><span class="attr">      containers:</span></span><br><span class="line"><span class="attr">      - name:</span> <span class="string">petservice</span></span><br><span class="line"><span class="attr">        image:</span> <span class="string">gcr.io/nithinistioproject/petservice:feb4v2</span></span><br><span class="line"><span class="attr">        imagePullPolicy:</span> <span class="string">IfNotPresent</span></span><br><span class="line"><span class="attr">        ports:</span></span><br><span class="line"><span class="attr">        - containerPort:</span> <span class="number">9080</span></span><br><span class="line"><span class="meta">---</span></span><br><span class="line"></span><br><span class="line"><span class="comment">###########################################################################</span></span><br><span class="line"><span class="comment"># Ingress resource (gateway)</span></span><br><span class="line"><span class="comment">##########################################################################</span></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">extensions/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Ingress</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">gateway</span></span><br><span class="line"><span class="attr">  annotations:</span></span><br><span class="line">    <span class="string">kubernetes.io/ingress.class:</span> <span class="string">"istio"</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  rules:</span></span><br><span class="line"><span class="attr">  - http:</span></span><br><span class="line"><span class="attr">      paths:</span></span><br><span class="line"><span class="attr">      - path:</span> <span class="string">/pet/.*</span></span><br><span class="line"><span class="attr">        backend:</span></span><br><span class="line"><span class="attr">          serviceName:</span> <span class="string">petservice</span></span><br><span class="line"><span class="attr">          servicePort:</span> <span class="number">9080</span></span><br><span class="line"><span class="meta">---</span></span><br></pre></td></tr></table></figure>
+<p>一旦运行了 deploy.sh，就可以通过执行以下命令来检查确认部署、服务和 Ingress 是否已经创建：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">mallyn01$ kubectl get deployment</span><br><span class="line">NAME                          DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE</span><br><span class="line">petdetailsservice-v1          1         1         1            1           1h</span><br><span class="line">petmedicalhistoryservice-v1   1         1         1            1           58m</span><br><span class="line">petservice-v1                 1         1         1            1           54m</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">mallyn01$ kubectl get service</span><br><span class="line">NAME                       TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE</span><br><span class="line">kubernetes                 ClusterIP   10.51.240.1    &lt;none&gt;        443/TCP    2d</span><br><span class="line">petdetailsservice          ClusterIP   10.51.255.10   &lt;none&gt;        9081/TCP   1h</span><br><span class="line">petmedicalhistoryservice   ClusterIP   10.51.244.19   &lt;none&gt;        9082/TCP   59m</span><br><span class="line">petservice                 ClusterIP   10.51.242.18   &lt;none&gt;        9080/TCP   1h</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">petservice mallyn01$ kubectl get ing</span><br><span class="line">NAME      HOSTS     ADDRESS        PORTS     AGE</span><br><span class="line">gateway   *         108.59.82.93   80        1h</span><br><span class="line">mallyn01$ kubectl get pods</span><br><span class="line">NAME                                           READY     STATUS    RESTARTS   AGE</span><br><span class="line">petdetailsservice-v1-5bb8c65577-jmn6r          2/2       Running   0          12h</span><br><span class="line">petmedicalhistoryservice-v1-5757f98898-tq5j8   2/2       Running   0          12h</span><br><span class="line">petservice-v1-587696b469-qttqk                 2/2       Running   0          12h</span><br></pre></td></tr></table></figure>
+<p>当查看控制台中 pod 的信息，即使你只为每个容器部署了一项服务，但仍会注意到有2/2个容器正在运行。 另一个容器是 istioctl 命令注入的边车代理。</p>
+<p><strong>5.</strong> 一旦上述所有内容都运行完毕，您可以使用 Ingress 的 IP 地址去调用示例端点来获取 Pet 的详细信息。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">mallyn01$ curl http://108.59.82.93/pet/123</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"petDetails"</span>: &#123;</span><br><span class="line">    <span class="string">"petName"</span>: <span class="string">"Maximus"</span>,</span><br><span class="line">    <span class="string">"petAge"</span>: 5,</span><br><span class="line">    <span class="string">"petOwner"</span>: <span class="string">"Nithin Mallya"</span>,</span><br><span class="line">    <span class="string">"petBreed"</span>: <span class="string">"Dog"</span></span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="string">"petMedicalHistory"</span>: &#123;</span><br><span class="line">    <span class="string">"vaccinationList"</span>: [</span><br><span class="line">      <span class="string">"Bordetella, Leptospirosis, Rabies, Lyme Disease"</span></span><br><span class="line">    ]</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><strong>注意：</strong> 由于 PetService 调用 PetDetailsService 和 PetMedicalHistoryService，实际的调用将如下所示：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">fetch(<span class="string">'http://petdetailsservice:9081/pet/123/details'</span>)</span><br><span class="line">          .<span class="keyword">then</span>(res =&gt; res.text())</span><br><span class="line">          .<span class="keyword">then</span>(body =&gt; console.log(body));</span><br><span class="line">        ;</span><br><span class="line"></span><br><span class="line">fetch(<span class="string">'http://petmedicalhistoryservice:9082/pet/123/medicalhistory'</span>)</span><br><span class="line">          .<span class="keyword">then</span>(res =&gt; res.text())</span><br><span class="line">          .<span class="keyword">then</span>(body =&gt; console.log(body));</span><br><span class="line">        ;</span><br></pre></td></tr></table></figure>
+<p><strong>结论</strong>:  我们覆盖了大量内容 （但这只是第一部分！！）</p>
+<p>在随后的部分中，将详细介绍如何使用其他 Istio 特性，例如将流量逐步迁移到一个新升级的版本上，使用性能监控仪表板等等。</p>
+<p>特别感谢 <a href="https://medium.com/@saturnism" target="_blank" rel="noopener">Ray Tsang</a> 的关于 Istio 的 <a href="https://www.youtube.com/watch?v=AGztKw580yQ&amp;t=231s" target="_blank" rel="noopener">演讲材料</a> 。</p>
+<h2 id="资源"><a href="#资源" class="headerlink" title="资源"></a>资源</h2><ol>
+<li>The Istio home page <a href="https://istio.io/" target="_blank" rel="noopener">https://istio.io/</a></li>
+<li>DevOxx 的Ray Tsang的 Istio 演讲材料: <a href="https://www.youtube.com/watch?v=AGztKw580yQ&amp;t=231s" target="_blank" rel="noopener">https://www.youtube.com/watch?v=AGztKw580yQ&amp;t=231s</a></li>
+<li>案例的Github link: <a href="https://github.com/nmallya/istiodemo" target="_blank" rel="noopener">https://github.com/nmallya/istiodemo</a></li>
+<li>Kubernetes: <a href="https://kubernetes.io/" target="_blank" rel="noopener">https://kubernetes.io/</a></li>
+<li>微服务:  <a href="https://martinfowler.com/articles/microservices.html" target="_blank" rel="noopener">https://martinfowler.com/articles/microservices.html</a></li>
+<li>Spring Cloud Netflix: <a href="https://github.com/spring-cloud/spring-cloud-netflix" target="_blank" rel="noopener">https://github.com/spring-cloud/spring-cloud-netflix</a></li>
+</ol>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/03/14/gke_istio_microservices_2/" title="Google" kubernetes引擎上使用istio简化微服务 — 第ii部分="" （译）="">
+                    <div class="nextTitle">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/01/19/kubeadm_centos7.4_install/" title="Kubeadm@Centos" 7.4="" 安装="" kubernetes="" 1.9.1="">
+                    <div class="prevTitle">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/03/12/gke_istio_microservices_1/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#使用Istio简化微服务系列一：如何用Isito解决Spring-Cloud-Netflix部署微服务的挑战"><span class="toc-number">1.</span> <span class="toc-text">使用Istio简化微服务系列一：如何用Isito解决Spring Cloud Netflix部署微服务的挑战?</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#概述"><span class="toc-number">1.1.</span> <span class="toc-text">概述</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#背景"><span class="toc-number">1.2.</span> <span class="toc-text">背景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#进入微服务"><span class="toc-number">1.2.1.</span> <span class="toc-text">进入微服务</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Spring-Cloud-Netflix"><span class="toc-number">1.2.2.</span> <span class="toc-text">Spring Cloud Netflix:</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#挑战"><span class="toc-number">1.3.</span> <span class="toc-text">挑战</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#解决方案"><span class="toc-number">1.4.</span> <span class="toc-text">解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Istio介绍："><span class="toc-number">1.4.1.</span> <span class="toc-text">Istio介绍：</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#用Istio进行服务—服务通信"><span class="toc-number">1.4.2.</span> <span class="toc-text">用Istio进行服务—服务通信</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#资源"><span class="toc-number">1.5.</span> <span class="toc-text">资源</span></a></li></ol></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

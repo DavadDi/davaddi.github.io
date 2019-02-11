@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Serverless 之 OpenFaaS · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Serverless 之 OpenFaaS</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Serverless 之 OpenFaaS
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="serverless">serverless</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="openfaas">openfaas</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/08/03</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h2 id="介绍"><a href="#介绍" class="headerlink" title="介绍"></a>介绍</h2><p>OpenFaaS - Serverless Functions Made Simple for Docker &amp; Kubernetes <a href="https://docs.openfaas.com/" target="_blank" rel="noopener">https://docs.openfaas.com/</a>，当前支持以下语言：csharp、go、python、node、java、ruby等。</p>
+<p><img src="https://camo.githubusercontent.com/08bc7c0c4f882ef5eadaed797388b27b1a3ca056/68747470733a2f2f7062732e7477696d672e636f6d2f6d656469612f4446726b46344e586f41414a774e322e6a7067" alt=""></p>
+<p>在 OpenFaaS 的UI 中可以通过指定 Docker Image等相关信息添加一个新的 Function，具体界面如下：</p>
+<p><img src="https://www.do1618.com/wp-content/uploads/2018/08/openfaas_new_fun.png" alt=""></p>
+<p>从原来上来讲，在我们部署的 Docker Image 中，在编译中会自动加入 <em>Function Watchdog</em> 的程序，该程序是基于 Go 开发的 Http Server，负责将本地镜像中的包含 Function 的可执行程序与 API Gateway 进行一个串联。</p>
+<p><img src="http://www.do1618.com/wp-content/uploads/2018/08/call_serverless_function.png" alt=""></p>
+<h2 id="安装-OpenFaaS"><a href="#安装-OpenFaaS" class="headerlink" title="安装 OpenFaaS"></a>安装 OpenFaaS</h2><p>安装过程参考：<a href="https://github.com/openfaas/workshop，为方便进行环境搭建和测试，本文采用" target="_blank" rel="noopener">https://github.com/openfaas/workshop，为方便进行环境搭建和测试，本文采用</a> Docker Swarm 的方式。MiniKube 的方式可以参见 <a href="https://medium.com/devopslinks/getting-started-with-openfaas-on-minikube-634502c7acdf" target="_blank" rel="noopener">Getting started with OpenFaaS on minikube</a></p>
+<h3 id="安装-OpenFaaS-CLI"><a href="#安装-OpenFaaS-CLI" class="headerlink" title="安装 OpenFaaS CLI"></a>安装 OpenFaaS CLI</h3><p>参见：<a href="https://github.com/openfaas/workshop/blob/master/lab1.md" target="_blank" rel="noopener">Prepare for OpenFaaS</a></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Docker Swarm</span></span><br><span class="line">$ docker swarm init</span><br><span class="line"></span><br><span class="line"><span class="comment"># OpenFaaS CLI</span></span><br><span class="line">$ curl -sL cli.openfaas.com | sudo sh</span><br><span class="line"></span><br><span class="line">$ faas-cli <span class="built_in">help</span></span><br><span class="line">$ faas-cli version</span><br></pre></td></tr></table></figure>
+<h3 id="部署-OpenFaaS"><a href="#部署-OpenFaaS" class="headerlink" title="部署 OpenFaaS"></a>部署 OpenFaaS</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">$ git <span class="built_in">clone</span> https://github.com/openfaas/faas</span><br><span class="line">$ <span class="built_in">cd</span> faas &amp;&amp; git checkout master</span><br><span class="line">$ ./deploy_stack.sh --no-auth  <span class="comment"># 部署 faas-swarm 相关的 provider</span></span><br><span class="line">$ docker service ls</span><br><span class="line">docker service ls</span><br><span class="line">ID                  NAME                MODE                REPLICAS            IMAGE                              PORTS</span><br><span class="line">jauscdc7kxsi        base64              replicated          1/1                 <span class="built_in">functions</span>/alpine:latest</span><br><span class="line">tqo6mkpf3xg6        echoit              replicated          1/1                 <span class="built_in">functions</span>/alpine:latest</span><br><span class="line">prmtd3len7hs        func_alertmanager   replicated          1/1                 prom/alertmanager:v0.15.0-rc.0</span><br><span class="line">i2p4m4187lkg        func_faas-swarm     replicated          1/1                 openfaas/faas-swarm:0.4.0</span><br><span class="line">vizszwmlekg6        func_gateway        replicated          1/1                 openfaas/gateway:0.8.9             *:8080-&gt;8080/tcp</span><br><span class="line">07p9rusy7hiu        func_nats           replicated          1/1                 nats-streaming:0.6.0</span><br><span class="line">wxftz5yscpiz        func_prometheus     replicated          1/1                 prom/prometheus:v2.2.0             *:9090-&gt;9090/tcp</span><br><span class="line">zcpqvvj64tv4        func_queue-worker   replicated          1/1                 openfaas/queue-worker:0.4.8</span><br><span class="line"></span><br><span class="line">......</span><br></pre></td></tr></table></figure>
+<p>当部署完成后，我们可以通过 <a href="http://127.0.0.1:8080/ui/" target="_blank" rel="noopener">http://127.0.0.1:8080/ui/</a> 参看到已经部署的 Function 并可以进行相关测试。</p>
+<h2 id="Go-语言"><a href="#Go-语言" class="headerlink" title="Go 语言"></a>Go 语言</h2><p>Go 语言的静态编译方式，可以打造出来体积比较小的镜像出来，非常适用于在 OpenFaaS 中来进行使用。</p>
+<h3 id="创建-Hello-World-程序"><a href="#创建-Hello-World-程序" class="headerlink" title="创建 Hello World 程序"></a>创建 Hello World 程序</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">$ mkdir -p <span class="variable">$GOPATH</span>/src/<span class="built_in">functions</span> &amp;&amp; <span class="built_in">cd</span> <span class="variable">$GOPATH</span>/src/<span class="built_in">functions</span></span><br><span class="line"></span><br><span class="line">$ faas-cli new --lang go gohash</span><br><span class="line">Folder: gohash created.</span><br><span class="line">  ___                   ___              ___  </span><br><span class="line"> / _ \ _ __   ___ _ __ |  ___|_ _  __ _/ ___| </span><br><span class="line">| | | | <span class="string">'_ \ / _ \ '</span>_ \| |_ / _` |/ _` \___ \ </span><br><span class="line">| |_| | |_) |  __/ | | |  _| (_| | (_| |___) |</span><br><span class="line"> \___/| .__/ \___|_| |_|_|  \__,_|\__,_|___ / </span><br><span class="line">      |_|                                     </span><br><span class="line"></span><br><span class="line">Function created <span class="keyword">in</span> folder: gohash</span><br><span class="line">Stack file written: gohash.yml</span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建后生成以下目录结构</span></span><br><span class="line">$ tree</span><br><span class="line">.</span><br><span class="line">├── build</span><br><span class="line">│   └── gohash</span><br><span class="line">│       ├── Dockerfile</span><br><span class="line">│       ├── <span class="keyword">function</span></span><br><span class="line">│       │   └── handler.go</span><br><span class="line">│       ├── main.go</span><br><span class="line">│       └── template.yml</span><br><span class="line">├── gohash</span><br><span class="line">│   └── handler.go  <span class="comment"># 用于编写主逻辑的函数入口</span></span><br><span class="line">├── gohash.yml      <span class="comment"># 配置文件</span></span><br><span class="line">└── template</span><br><span class="line">    ......</span><br></pre></td></tr></table></figure>
+<p><code>gohash.yml</code> 格式：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">provider:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">faas</span></span><br><span class="line"><span class="attr">  gateway:</span> <span class="attr">http://127.0.0.1:8080</span></span><br><span class="line"></span><br><span class="line"><span class="attr">functions:</span></span><br><span class="line"><span class="attr">  gohash:</span></span><br><span class="line"><span class="attr">    lang:</span> <span class="string">go</span></span><br><span class="line"><span class="attr">    handler:</span> <span class="string">./gohash</span></span><br><span class="line"><span class="attr">    image:</span> <span class="attr">gohash:latest</span></span><br></pre></td></tr></table></figure>
+<p><code>gohash/handler.go</code> 内容如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> function</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">"fmt"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Handle a serverless request</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Handle</span><span class="params">(req []<span class="keyword">byte</span>)</span> <span class="title">string</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> fmt.Sprintf(<span class="string">"Hello, Go. You said: %s"</span>, <span class="keyword">string</span>(req))</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="编译和部署"><a href="#编译和部署" class="headerlink" title="编译和部署"></a>编译和部署</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 编译程序</span></span><br><span class="line">$ faas-cli build -f gohash.yml</span><br><span class="line"></span><br><span class="line"><span class="comment"># 部署程序</span></span><br><span class="line">$ faas-cli deploy -f gohash.yml</span><br><span class="line"></span><br><span class="line"><span class="comment"># 调用并测试</span></span><br><span class="line">$ <span class="built_in">echo</span> -n <span class="string">"test"</span> | faas-cli invoke gohash</span><br><span class="line">Hello, Go. You said: <span class="built_in">test</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 删除</span></span><br><span class="line">$ <span class="built_in">echo</span> -n <span class="string">"test"</span> | faas-cli delete gohash</span><br></pre></td></tr></table></figure>
+<h2 id="镜像细节探究"><a href="#镜像细节探究" class="headerlink" title="镜像细节探究"></a>镜像细节探究</h2><p><code>build/gohash</code> 目录下文件列表如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ tree</span><br><span class="line">├── Dockerfile</span><br><span class="line">├── function</span><br><span class="line">│   └── handler.go</span><br><span class="line">├── main.go</span><br><span class="line">└── template.yml</span><br></pre></td></tr></table></figure>
+<h3 id="main-go"><a href="#main-go" class="headerlink" title="main.go"></a>main.go</h3><p>首先我们分析一下 <code>main.go</code>，内容如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">"fmt"</span></span><br><span class="line">	<span class="string">"io/ioutil"</span></span><br><span class="line">	<span class="string">"log"</span></span><br><span class="line">	<span class="string">"os"</span></span><br><span class="line"></span><br><span class="line">	<span class="string">"handler/function"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	input, err := ioutil.ReadAll(os.Stdin)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatalf(<span class="string">"Unable to read standard input: %s"</span>, err.Error())</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	fmt.Println(function.Handle(input))</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过对于 <code>main.go</code>源码分析，我们可以得知，<code>main</code>函数主要是从 <code>os.Stdin</code> 读取数据，并调用我们 <code>function.Handle</code> 并将调用的结果打印到 <code>os.Stdout</code>。<code>main.go</code> 起到了一个包装器的作用。</p>
+<h3 id="template-yml"><a href="#template-yml" class="headerlink" title="template.yml"></a>template.yml</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">language: <span class="keyword">go</span></span><br><span class="line">fprocess: ./handler</span><br><span class="line">welcome_message: |</span><br><span class="line">  You have created a <span class="built_in">new</span> function which uses Golang <span class="number">1.9</span><span class="number">.7</span>.</span><br><span class="line">  To include third-party dependencies, use a vendoring tool like dep:</span><br><span class="line">  dep documentation: https:<span class="comment">//github.com/golang/dep#installation</span></span><br></pre></td></tr></table></figure>
+<h3 id="Dockerfile"><a href="#Dockerfile" class="headerlink" title="Dockerfile"></a>Dockerfile</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line">$ cat Dockerfile</span><br><span class="line">FROM golang:1.9.7-alpine3.7 as builder</span><br><span class="line"></span><br><span class="line">RUN apk --no-cache add curl \</span><br><span class="line">    &amp;&amp; <span class="built_in">echo</span> <span class="string">"Pulling watchdog binary from Github."</span> \</span><br><span class="line">    &amp;&amp; curl -sSL https://github.com/openfaas/faas/releases/download/0.8.9/fwatchdog &gt; /usr/bin/fwatchdog \</span><br><span class="line">    &amp;&amp; chmod +x /usr/bin/fwatchdog \</span><br><span class="line">    &amp;&amp; apk del curl --no-cache</span><br><span class="line"></span><br><span class="line">WORKDIR /go/src/handler</span><br><span class="line">COPY . .</span><br><span class="line"></span><br><span class="line"><span class="comment"># Run a gofmt and exclude all vendored code.</span></span><br><span class="line">RUN <span class="built_in">test</span> -z <span class="string">"<span class="variable">$(gofmt -l $(find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./function/vendor/*")</span>)"</span> || &#123; <span class="built_in">echo</span> <span class="string">"Run \"gofmt -s -w\" on your Golang code"</span>; <span class="built_in">exit</span> 1; &#125;</span><br><span class="line"></span><br><span class="line">RUN CGO_ENABLED=0 GOOS=linux \</span><br><span class="line">    go build --ldflags <span class="string">"-s -w"</span> -a -installsuffix cgo -o handler . &amp;&amp; \</span><br><span class="line">    go <span class="built_in">test</span> $(go list ./... | grep -v /vendor/) -cover</span><br><span class="line"></span><br><span class="line">FROM alpine:3.7</span><br><span class="line">RUN apk --no-cache add ca-certificates</span><br><span class="line"></span><br><span class="line"><span class="comment"># Add non root user</span></span><br><span class="line">RUN addgroup -S app &amp;&amp; adduser -S -g app app</span><br><span class="line">RUN mkdir -p /home/app</span><br><span class="line"></span><br><span class="line">WORKDIR /home/app</span><br><span class="line"></span><br><span class="line">COPY --from=builder /usr/bin/fwatchdog         .</span><br><span class="line"></span><br><span class="line">COPY --from=builder /go/src/handler/<span class="keyword">function</span>/  .</span><br><span class="line">COPY --from=builder /go/src/handler/handler    .</span><br><span class="line"></span><br><span class="line">RUN chown -R app /home/app</span><br><span class="line"></span><br><span class="line">USER app</span><br><span class="line"></span><br><span class="line">ENV fprocess=<span class="string">"./handler"</span></span><br><span class="line"></span><br><span class="line">HEALTHCHECK --interval=2s CMD [ -e /tmp/.lock ] || <span class="built_in">exit</span> 1</span><br><span class="line"></span><br><span class="line">CMD [<span class="string">"./fwatchdog"</span>]</span><br></pre></td></tr></table></figure>
+<p>在生成的 <code>gohash:latest</code> 的镜像中目录结构如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">~ $ <span class="built_in">pwd</span></span><br><span class="line">/home/app</span><br><span class="line">~ $ ls -hl</span><br><span class="line">total 5644</span><br><span class="line">-rwxr-xr-x    1 app      root        4.2M Aug  2 05:16 fwatchdog</span><br><span class="line">-rwxr-xr-x    1 app      root        1.3M Aug  2 05:16 handler</span><br><span class="line">-rw-r--r--    1 app      root         163 Aug  2 05:15 handler.go</span><br></pre></td></tr></table></figure>
+<h3 id="watch-dog"><a href="#watch-dog" class="headerlink" title="watch dog"></a>watch dog</h3><p>watch dog 对于我们编写的 <code>function</code> 函数套上了一层 http 的外壳（通过创建子进程，写入子进程的 stdiin，然后从子进程 stdout 接受响应数据）。</p>
+<p><img src="https://camo.githubusercontent.com/61c169ab5cd01346bc3dc7a11edc1d218f0be3b4/68747470733a2f2f7062732e7477696d672e636f6d2f6d656469612f4447536344626c554941416f34482d2e6a70673a6c61726765" alt=""></p>
+<p>Wtachdog，作为镜像的对外代理程序，必须作为启动的入口，一个简单的 Dockerfile 文件如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">FROM alpine:3.7</span><br><span class="line"></span><br><span class="line">ADD https://github.com/openfaas/faas/releases/download/0.8.0/fwatchdog /usr/bin</span><br><span class="line">RUN chmod +x /usr/bin/fwatchdog</span><br><span class="line"></span><br><span class="line"><span class="comment"># Define your binary here</span></span><br><span class="line">ENV fprocess=<span class="string">"/bin/cat"</span>     <span class="comment"># 通过环境变量到处 watchdog 需要派生的子进程二进制</span></span><br><span class="line"></span><br><span class="line">CMD [<span class="string">"fwatchdog"</span>]           <span class="comment"># 必须将 watchdog 作为镜像运行的入口</span></span><br></pre></td></tr></table></figure>
+<p>对于 watchdog 的配置，主要是通过环境变量的方式进行，可以配置的值如下：</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fprocess</code></td>
+<td>The process to invoke for each function call (function process). This must be a UNIX binary and accept input via STDIN and output via STDOUT</td>
+</tr>
+<tr>
+<td><code>cgi_headers</code></td>
+<td>HTTP headers from request are made available through environmental variables - <code>Http_X_Served_By</code>etc. See section: <em>Handling headers</em> for more detail. Enabled by default</td>
+</tr>
+<tr>
+<td><code>marshal_request</code></td>
+<td>Instead of re-directing the raw HTTP body into your fprocess, it will first be marshalled into JSON. Use this if you need to work with HTTP headers and do not want to use environmental variables via the <code>cgi_headers</code> flag.</td>
+</tr>
+<tr>
+<td><code>content_type</code></td>
+<td>Force a specific Content-Type response for all responses</td>
+</tr>
+<tr>
+<td><code>write_timeout</code></td>
+<td>HTTP timeout for writing a response body from your function (in seconds)</td>
+</tr>
+<tr>
+<td><code>read_timeout</code></td>
+<td>HTTP timeout for reading the payload from the client caller (in seconds)</td>
+</tr>
+<tr>
+<td><code>suppress_lock</code></td>
+<td>The watchdog will attempt to write a lockfile to /tmp/ for swarm healthchecks - set this to true to disable behaviour.</td>
+</tr>
+<tr>
+<td><code>exec_timeout</code></td>
+<td>Hard timeout for process exec’d for each incoming request (in seconds). Disabled if set to 0</td>
+</tr>
+<tr>
+<td><code>write_debug</code></td>
+<td>Write all output, error messages, and additional information to the logs. Default is false</td>
+</tr>
+<tr>
+<td><code>combine_output</code></td>
+<td>True by default - combines stdout/stderr in function response, when set to false <code>stderr</code> is written to the container logs and stdout is used for function response</td>
+</tr>
+</tbody>
+</table>
+<p>更加具体的功能或者使用说明，参考：<a href="https://github.com/openfaas/faas/tree/master/watchdog" target="_blank" rel="noopener">https://github.com/openfaas/faas/tree/master/watchdog</a></p>
+<p>watchdog 的主流程：</p>
+<p><a href="https://github.com/openfaas/faas/blob/master/watchdog/main.go#L22" target="_blank" rel="noopener"><code>main.go</code></a></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">		s := &amp;http.Server&#123;</span><br><span class="line">		Addr:           fmt.Sprintf(<span class="string">":%d"</span>, config.port),</span><br><span class="line">		ReadTimeout:    readTimeout,</span><br><span class="line">		WriteTimeout:   writeTimeout,</span><br><span class="line">		MaxHeaderBytes: <span class="number">1</span> &lt;&lt; <span class="number">20</span>, <span class="comment">// Max header of 1MB</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	http.HandleFunc(<span class="string">"/_/health"</span>, makeHealthHandler())  <span class="comment">// 用于健康检查</span></span><br><span class="line">	http.HandleFunc(<span class="string">"/"</span>, makeRequestHandler(&amp;config))  <span class="comment">// 处理请求</span></span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><a href="https://github.com/openfaas/faas/blob/master/watchdog/handler.go#L292" target="_blank" rel="noopener"><code>handler.go</code></a></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">makeRequestHandler</span><span class="params">(config *WatchdogConfig)</span> <span class="title">func</span><span class="params">(http.ResponseWriter, *http.Request)</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="function"><span class="keyword">func</span><span class="params">(w http.ResponseWriter, r *http.Request)</span></span> &#123;</span><br><span class="line">		<span class="keyword">switch</span> r.Method &#123;</span><br><span class="line">		<span class="keyword">case</span></span><br><span class="line">			http.MethodPost,</span><br><span class="line">			http.MethodPut,</span><br><span class="line">			http.MethodDelete,</span><br><span class="line">			http.MethodGet:</span><br><span class="line">			pipeRequest(config, w, r, r.Method)</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			w.WriteHeader(http.StatusMethodNotAllowed)</span><br><span class="line"></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><a href="https://github.com/openfaas/faas/blob/master/watchdog/handler.go#L62:6" target="_blank" rel="noopener"><code>handler.go</code></a></p>
+<p>主要通过调用 <code>os.exec</code> 相关的函数来实现。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">pipeRequest</span><span class="params">(config *WatchdogConfig, w http.ResponseWriter, r *http.Request, method <span class="keyword">string</span>)</span></span> &#123;</span><br><span class="line">    parts := strings.Split(config.faasProcess, <span class="string">" "</span>)</span><br><span class="line">	ri := &amp;requestInfo&#123;&#125;</span><br><span class="line">	log.Println(<span class="string">"Forking fprocess."</span>)</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 执行目标二进制文件</span></span><br><span class="line">	targetCmd := exec.Command(parts[<span class="number">0</span>], parts[<span class="number">1</span>:]...)</span><br><span class="line">	</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取目标子进程的 Stdin，后续将请求信息解码有写入</span></span><br><span class="line">    <span class="comment">// func (c *Cmd) StdoutPipe() (io.ReadCloser, error)</span></span><br><span class="line">	writer, _ := targetCmd.StdinPipe()</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 根据配置的各种参数，来进行处理写入，并采用 waitgroup 来读取响应</span></span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    <span class="comment">// func (c *Cmd) CombinedOutput() ([]byte, error) </span></span><br><span class="line">    out, err = targetCmd.Output()</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 将读取到的写入 w http.ResponseWriter 中</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="Gateway-核心功能"><a href="#Gateway-核心功能" class="headerlink" title="Gateway 核心功能"></a><a href="https://github.com/openfaas/faas/tree/master/gateway" target="_blank" rel="noopener">Gateway</a> 核心功能</h2><p><img src="https://raw.githubusercontent.com/openfaas/faas/master/docs/of-overview.png" alt=""></p>
+<h3 id="Backend-交互"><a href="#Backend-交互" class="headerlink" title="Backend 交互"></a>Backend 交互</h3><p>OpenFaas 的 Backend 是通过 Provider 来进行的一层抽象，达到了与 Docker Swarm 或 Kubernets 容器编排平台的解耦，这两者是官方提供支持的。对于 OpenFaas 如何与 Backend 进行交互，可以参见 <a href="https://github.com/openfaas/faas/blob/master/guide/backends.md" target="_blank" rel="noopener">backend.md</a>。</p>
+<p>OpenFaas 与 Docker Swam 集群的交互是通过  <a href="https://github.com/openfaas/faas-swarm" target="_blank" rel="noopener">faas-swarm</a>, 与 Kubernets 平台的集成是通过 <a href="https://github.com/openfaas/faas-netes" target="_blank" rel="noopener">faas-netes</a> 。其他的 Provider 也都有社区进行开发。例如 AWS <a href="https://github.com/ewilde/faas-fargate" target="_blank" rel="noopener">faas-fargate</a>， Nomad <a href="https://github.com/hashicorp/faas-nomad" target="_blank" rel="noopener">faas-nomad</a>, Rancher <a href="https://github.com/kenfdev/faas-rancher" target="_blank" rel="noopener">faas-rancher</a> 等。</p>
+<p><strong>部署函数</strong></p>
+<p><img src="https://camo.githubusercontent.com/14fca0665b637e7e20b0677a8e636dea8b014dd4/68747470733a2f2f7062732e7477696d672e636f6d2f6d656469612f44497946466e73586b41416135476a2e6a7067" alt=""></p>
+<p><strong>调用函数</strong></p>
+<p><img src="https://camo.githubusercontent.com/1ce383bf1c7076fd83afaf9865df082d6a952900/68747470733a2f2f7062732e7477696d672e636f6d2f6d656469612f44497946466e71586741414d7943682e6a7067" alt=""></p>
+<p>与 Kubernets 的交互图如下:</p>
+<p><img src="https://camo.githubusercontent.com/888f9106de92978615b16231e6a0801e0a5b6f77/68747470733a2f2f696d6775722e636f6d2f646f776e6c6f61642f525847344e3162" alt=""></p>
+<h3 id="Gateway-与-Provider-交互"><a href="#Gateway-与-Provider-交互" class="headerlink" title="Gateway 与 Provider 交互"></a>Gateway 与 Provider 交互</h3><p>Gateway 通过读取环境变量 <code>functions_provider_url</code> 来与 Provider 进行交互。</p>
+<p><code>gateway/server.go</code></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line"></span><br><span class="line">	osEnv := types.OsEnv&#123;&#125;</span><br><span class="line">	readConfig := types.ReadConfig&#123;&#125;</span><br><span class="line">	config := readConfig.Read(osEnv)</span><br><span class="line"></span><br><span class="line">	log.Printf(<span class="string">"HTTP Read Timeout: %s"</span>, config.ReadTimeout)</span><br><span class="line">	log.Printf(<span class="string">"HTTP Write Timeout: %s"</span>, config.WriteTimeout)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> !config.UseExternalProvider() &#123;</span><br><span class="line">		log.Fatalln(<span class="string">"You must provide an external provider via 'functions_provider_url' env-var."</span>)</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    <span class="comment">// 在配置文件类 config 中 FunctionsProviderURL 作为 Provider 的 URL 使用</span></span><br><span class="line">    reverseProxy := types.NewHTTPClientReverseProxy(config.FunctionsProviderURL, config.UpstreamTimeout)</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">	urlResolver := handlers.SingleHostBaseURLResolver&#123;BaseURL: config.FunctionsProviderURL.String()&#125; <span class="comment">// config.FunctionsProviderURL</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Read fetches config from environmental variables.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ReadConfig)</span> <span class="title">Read</span><span class="params">(hasEnv HasEnv)</span> <span class="title">GatewayConfig</span></span> &#123;</span><br><span class="line">	cfg := GatewayConfig&#123;</span><br><span class="line">		PrometheusHost: <span class="string">"prometheus"</span>,</span><br><span class="line">		PrometheusPort: <span class="number">9090</span>,</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(hasEnv.Getenv(<span class="string">"functions_provider_url"</span>)) &gt; <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">var</span> err error</span><br><span class="line">		cfg.FunctionsProviderURL, err = url.Parse(hasEnv.Getenv(<span class="string">"functions_provider_url"</span>))</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Fatal(<span class="string">"If functions_provider_url is provided, then it should be a valid URL."</span>, err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// ....</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Docker-Swarm-Provider"><a href="#Docker-Swarm-Provider" class="headerlink" title="Docker Swarm Provider"></a>Docker Swarm Provider</h3><h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://blog.alexellis.io/serverless-golang-with-openfaas/" target="_blank" rel="noopener">Build a Serverless Golang Function with OpenFaaS</a></li>
+</ol>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/09/01/grpc_gateway/" title="gRPC" 之="" gateway="">
+                    <div class="nextTitle">gRPC 之 Gateway</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/07/31/goroutine_leak/" title="Goroutine" 泄露="" (译)="">
+                    <div class="prevTitle">Goroutine 泄露 (译)</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/08/03/serverless-openfaas/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Serverless 之 OpenFaaS"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#介绍"><span class="toc-number">1.</span> <span class="toc-text">介绍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#安装-OpenFaaS"><span class="toc-number">2.</span> <span class="toc-text">安装 OpenFaaS</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#安装-OpenFaaS-CLI"><span class="toc-number">2.1.</span> <span class="toc-text">安装 OpenFaaS CLI</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#部署-OpenFaaS"><span class="toc-number">2.2.</span> <span class="toc-text">部署 OpenFaaS</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Go-语言"><span class="toc-number">3.</span> <span class="toc-text">Go 语言</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#创建-Hello-World-程序"><span class="toc-number">3.1.</span> <span class="toc-text">创建 Hello World 程序</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#编译和部署"><span class="toc-number">3.2.</span> <span class="toc-text">编译和部署</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#镜像细节探究"><span class="toc-number">4.</span> <span class="toc-text">镜像细节探究</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#main-go"><span class="toc-number">4.1.</span> <span class="toc-text">main.go</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#template-yml"><span class="toc-number">4.2.</span> <span class="toc-text">template.yml</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Dockerfile"><span class="toc-number">4.3.</span> <span class="toc-text">Dockerfile</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#watch-dog"><span class="toc-number">4.4.</span> <span class="toc-text">watch dog</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Gateway-核心功能"><span class="toc-number">5.</span> <span class="toc-text">Gateway 核心功能</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Backend-交互"><span class="toc-number">5.1.</span> <span class="toc-text">Backend 交互</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Gateway-与-Provider-交互"><span class="toc-number">5.2.</span> <span class="toc-text">Gateway 与 Provider 交互</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Docker-Swarm-Provider"><span class="toc-number">5.3.</span> <span class="toc-text">Docker Swarm Provider</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">6.</span> <span class="toc-text">参考</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

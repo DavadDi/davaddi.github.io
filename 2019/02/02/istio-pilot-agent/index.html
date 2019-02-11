@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>istio pilot-agent 源码分析 · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">istio pilot-agent 源码分析</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            istio pilot-agent 源码分析
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="istio">istio</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2019/02/02</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>本文分析基于 Istio 1.1 版本，但是日志或者流程是基于 1.0.5 版本。</p>
+<h2 id="整体架构"><a href="#整体架构" class="headerlink" title="整体架构"></a>整体架构</h2><p>pilot 的代码仓库位于 <a href="https://github.com/istio/istio/tree/master/pilot" target="_blank" rel="noopener">pilot repo</a>，当前主要实现了 3 个命令：</p>
+<ol>
+<li><a href="https://github.com/istio/istio/tree/master/pilot/cmd/pilot-agent" target="_blank" rel="noopener">pilot-agent</a> 充当 Proxy 节点上与 API-Server 和 <a href="https://github.com/istio/proxy" target="_blank" rel="noopener">proxy</a> 的桥梁，负责生成 envoy 初始配置文件和管理envoy 生命周期；</li>
+<li><a href="https://github.com/istio/istio/tree/master/pilot/cmd/pilot-discovery" target="_blank" rel="noopener">pilot-discovery</a> 为  <a href="https://github.com/istio/proxy" target="_blank" rel="noopener">proxy</a>  提供集群地址服务发现服务；</li>
+<li><a href="https://github.com/istio/istio/tree/master/pilot/cmd/sidecar-injector" target="_blank" rel="noopener">sidecar-injector</a> 自动注入提供的 Webhook 服务；</li>
+</ol>
+<p><img src="https://camo.githubusercontent.com/919e2e3cd8e4267a00035b813df53902864a3388/68747470733a2f2f63646e2e7261776769742e636f6d2f697374696f2f70696c6f742f6d61737465722f646f632f70696c6f742e737667" alt=""></p>
+<blockquote>
+<p>上图为旧版本的结构图，与新版本可能有差异，但是整体架构类似</p>
+</blockquote>
+<p>在 istio-proxy 容器 pilot-agent 启动的命令行参数如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ ps -ef -www</span><br><span class="line">istio-p+     1     0  0 Jan14 ?        00:01:00 /usr/<span class="built_in">local</span>/bin/pilot-agent proxy sidecar --configPath /etc/istio/proxy --binaryPath /usr/<span class="built_in">local</span>/bin/envoy --serviceCluster helloworld --drainDuration 45s --parentShutdownDuration 1m0s --discoveryAddress istio-pilot.istio-system:15007 --discoveryRefreshDelay 1s --zipkinAddress zipkin.istio-system:9411 --connectTimeout 10s --proxyAdminPort 15000 --controlPlaneAuthPolicy NONE</span><br><span class="line"></span><br><span class="line">istio-p+   608     1  0 Jan15 ?        03:31:24 /usr/<span class="built_in">local</span>/bin/envoy -c /etc/istio/proxy/envoy-rev13.json --restart-epoch 13 --drain-time<span class="_">-s</span> 45 --parent-shutdown-time<span class="_">-s</span> 60 --service-cluster helloworld --service-node sidecar~10.128.5.4~helloworld-v1-8f8dd85-cfz42.default~default.svc.cluster.local --max-obj-name-len 189 --allow-unknown-fields -l warn --v2-config-only</span><br></pre></td></tr></table></figure>
+<p>其中 envoy 进程为 pilot-agent 的子进程，配置文件的初始化和启动监护由 pilot-agent 来管理。</p>
+<h2 id="pilot-agent-命令行"><a href="#pilot-agent-命令行" class="headerlink" title="pilot-agent 命令行"></a>pilot-agent 命令行</h2><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># /usr/local/bin/pilot-agent --help</span></span><br><span class="line">Istio Pilot agent runs <span class="keyword">in</span> the side car or gateway container and bootstraps envoy.</span><br><span class="line"></span><br><span class="line">Usage:</span><br><span class="line">  pilot-agent [<span class="built_in">command</span>]</span><br><span class="line"></span><br><span class="line">Available Commands:</span><br><span class="line">  <span class="built_in">help</span>        Help about any <span class="built_in">command</span></span><br><span class="line">  proxy       Envoy proxy agent</span><br><span class="line">  request     Makes an HTTP request to the Envoy admin API</span><br><span class="line">  version     Prints out build version information</span><br><span class="line"></span><br><span class="line">Flags:</span><br><span class="line">  -h, --<span class="built_in">help</span>                          <span class="built_in">help</span> <span class="keyword">for</span> pilot-agent</span><br><span class="line">      --log_as_json                   Whether to format output as JSON or <span class="keyword">in</span> plain console-friendly format</span><br><span class="line">      --log_caller string             Comma-separated list of scopes <span class="keyword">for</span> <span class="built_in">which</span> to include <span class="built_in">caller</span> information, scopes can be any of [default, model]</span><br><span class="line">      --log_output_level string       Comma-separated minimum per-scope logging level of messages to output, <span class="keyword">in</span> the form of &lt;scope&gt;:&lt;level&gt;,&lt;scope&gt;:&lt;level&gt;,... <span class="built_in">where</span> scope can be one of [default, model] and level can be one of [debug, info, warn, error, none] (default <span class="string">"default:info"</span>)</span><br><span class="line">      --log_rotate string             The path <span class="keyword">for</span> the optional rotating <span class="built_in">log</span> file</span><br><span class="line">      --log_rotate_max_age int        The maximum age <span class="keyword">in</span> days of a <span class="built_in">log</span> file beyond <span class="built_in">which</span> the file is rotated (0 indicates no <span class="built_in">limit</span>) (default 30)</span><br><span class="line">      --log_rotate_max_backups int    The maximum number of <span class="built_in">log</span> file backups to keep before older files are deleted (0 indicates no <span class="built_in">limit</span>) (default 1000)</span><br><span class="line">      --log_rotate_max_size int       The maximum size <span class="keyword">in</span> megabytes of a <span class="built_in">log</span> file beyond <span class="built_in">which</span> the file is rotated (default 104857600)</span><br><span class="line">      --log_stacktrace_level string   Comma-separated minimum per-scope logging level at <span class="built_in">which</span> stack traces are captured, <span class="keyword">in</span> the form of &lt;scope&gt;:&lt;level&gt;,&lt;scope:level&gt;,... <span class="built_in">where</span> scope can be one of [default, model] and level can be one of [debug, info, warn, error, none] (default <span class="string">"default:none"</span>)</span><br><span class="line">      --log_target stringArray        The <span class="built_in">set</span> of paths <span class="built_in">where</span> to output the <span class="built_in">log</span>. This can be any path as well as the special values stdout and stderr (default [stdout])</span><br><span class="line"></span><br><span class="line">Use <span class="string">"pilot-agent [command] --help"</span> <span class="keyword">for</span> more information about a <span class="built_in">command</span>.</span><br></pre></td></tr></table></figure>
+<p>关于子命令 proxy 的帮助内容如下：（省略了公共的参数）</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">$ /usr/<span class="built_in">local</span>/bin/pilot-agent proxy --<span class="built_in">help</span></span><br><span class="line">Envoy proxy agent</span><br><span class="line"></span><br><span class="line">Usage:</span><br><span class="line">  pilot-agent proxy [flags]</span><br><span class="line"></span><br><span class="line">Flags:</span><br><span class="line">      --applicationPorts stringSlice      Ports exposed by the application. Used to determine that Envoy is configured and ready to receive traffic.</span><br><span class="line">      --availabilityZone string           Availability zone</span><br><span class="line">      --binaryPath string                 Path to the proxy binary (default <span class="string">"/usr/local/bin/envoy"</span>)</span><br><span class="line">      --bootstrapv2                       Use bootstrap v2 - DEPRECATED (default <span class="literal">true</span>)</span><br><span class="line">      --concurrency int                   number of worker threads to run</span><br><span class="line">      --configPath string                 Path to the generated configuration file directory (default <span class="string">"/etc/istio/proxy"</span>)</span><br><span class="line">      --connectTimeout duration           Connection timeout used by Envoy <span class="keyword">for</span> supporting services (default 1s)</span><br><span class="line">      --controlPlaneAuthPolicy string     Control Plane Authentication Policy (default <span class="string">"NONE"</span>)</span><br><span class="line">      --customConfigFile string           Path to the custom configuration file</span><br><span class="line">      --disableInternalTelemetry          Disable internal telemetry</span><br><span class="line">      --discoveryAddress string           Address of the discovery service exposing xDS (e.g. istio-pilot:8080) (default <span class="string">"istio-pilot:15007"</span>)</span><br><span class="line">      --discoveryRefreshDelay duration    Polling interval <span class="keyword">for</span> service discovery (used by EDS, CDS, LDS, but not RDS) (default 1s)</span><br><span class="line">      --domain string                     DNS domain suffix. If not provided uses <span class="variable">$&#123;POD_NAMESPACE&#125;</span>.svc.cluster.local</span><br><span class="line">      --drainDuration duration            The time <span class="keyword">in</span> seconds that Envoy will drain connections during a hot restart (default 2s)</span><br><span class="line">  -h, --<span class="built_in">help</span>                              <span class="built_in">help</span> <span class="keyword">for</span> proxy</span><br><span class="line">      --id string                         Proxy unique ID. If not provided uses <span class="variable">$&#123;POD_NAME&#125;</span>.<span class="variable">$&#123;POD_NAMESPACE&#125;</span> from environment variables</span><br><span class="line">      --ip string                         Proxy IP address. If not provided uses <span class="variable">$&#123;INSTANCE_IP&#125;</span> environment variable.</span><br><span class="line">      --parentShutdownDuration duration   The time <span class="keyword">in</span> seconds that Envoy will <span class="built_in">wait</span> before shutting down the parent process during a hot restart (default 3s)</span><br><span class="line">      --proxyAdminPort uint16             Port on <span class="built_in">which</span> Envoy should listen <span class="keyword">for</span> administrative commands (default 15000)</span><br><span class="line">      --proxyLogLevel string              The <span class="built_in">log</span> level used to start the Envoy proxy (choose from &#123;trace, debug, info, warn, err, critical, off&#125;) (default <span class="string">"warn"</span>)</span><br><span class="line">      --serviceCluster string             Service cluster (default <span class="string">"istio-proxy"</span>)</span><br><span class="line">      --serviceregistry string            Select the platform <span class="keyword">for</span> service registry, options are &#123;Kubernetes, Consul, CloudFoundry, Mock, Config&#125; (default <span class="string">"Kubernetes"</span>)</span><br><span class="line">      --statsdUdpAddress string           IP Address and Port of a statsd UDP listener (e.g. 10.75.241.127:9125)</span><br><span class="line">      --statusPort uint16                 HTTP Port on <span class="built_in">which</span> to serve pilot agent status. If zero, agent status will not be provided.</span><br><span class="line">      --templateFile string               Go template bootstrap config</span><br><span class="line">      --zipkinAddress string              Address of the Zipkin service (e.g. zipkin:9411)</span><br></pre></td></tr></table></figure>
+<p>如果启动方式为 <code>/usr/local/bin/pilot-agent proxy</code> 则后面可以选的启动类型分为：</p>
+<ul>
+<li><p>pilot-agent proxy sidecar</p>
+</li>
+<li><p>pilot-agent proxy router， 用在 istio-gateway 方式下</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># ingressgateway 或者 egressgateway</span></span><br><span class="line">$ ps -ef -www</span><br><span class="line">UID        PID  PPID  C STIME TTY          TIME CMD</span><br><span class="line">root         1     0  0 Jan15 ?        00:00:52 /usr/<span class="built_in">local</span>/bin/pilot-agent proxy router -v 2 --discoveryRefreshDelay 1s --drainDuration 45s --parentShutdownDuration 1m0s --connectTimeout 10s --serviceCluster istio-ingressgateway --zipkinAddress zipkin:9411 --proxyAdminPort 15000 --controlPlaneAuthPolicy NONE --discoveryAddress istio-pilot:8080</span><br><span class="line">root        64     1  0 Jan15 ?        03:37:59 /usr/<span class="built_in">local</span>/bin/envoy -c /etc/istio/proxy/envoy-rev1.json --restart-epoch 1 --drain-time<span class="_">-s</span> 45 --parent-shutdown-time<span class="_">-s</span> 60 --service-cluster istio-ingressgateway --service-node router~10.128.45.4~istio-ingressgateway-78c6d8b8d7-sxvpx.istio-system~istio-system.svc.cluster.local --max-obj-name-len 189 --allow-unknown-fields -l warn --v2-config-only</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>pilot-agent proxy ingress，仅用于 ingress 模式下</p>
+</li>
+</ul>
+<h2 id="pilot-agent-代码流程分析"><a href="#pilot-agent-代码流程分析" class="headerlink" title="pilot-agent 代码流程分析"></a>pilot-agent 代码流程分析</h2><p>pilot-agent 需要监视相关的证书。</p>
+<ul>
+<li>sidecar模式，监视 <code>/etc/certs/</code> 目录下的 <code>cert-chain.pem/key.pem/root-cert.pem</code> 三个文件；</li>
+<li>ingress 模式，监控 <code>/etc/istio/ingress-certs/</code> 目录下的 <code>tls.crt/tls.key</code> 两个文件；</li>
+</ul>
+<p>在 pilot-agent 启动的初始日志里面，会打印出来当前的配置和监控的证书，如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="comment"># kubectl logs helloworld-v1-8f8dd85-cfz42 -c istio-proxy |more</span></span><br><span class="line">2019-01-14T06:35:21.726068Z	info	Version root@6f6ea1061f2b-docker.io/istio-1.0.5-c1707e45e71c75d74bf3a5dec8c7086f32f32fad-Clean</span><br><span class="line">2019-01-14T06:35:21.726179Z	info	Proxy role: model.Proxy&#123;ClusterID:<span class="string">""</span>, Type:<span class="string">"sidecar"</span>, IPAddress:<span class="string">"10.128.5.4"</span>, ID:<span class="string">"helloworld-v1-8f8dd8</span></span><br><span class="line"><span class="string">5-cfz42.default"</span>, Domain:<span class="string">"default.svc.cluster.local"</span>, Metadata:map[string]string(nil)&#125;</span><br><span class="line">2019-01-14T06:35:21.726865Z	info	Effective config: binaryPath: /usr/<span class="built_in">local</span>/bin/envoy</span><br><span class="line">configPath: /etc/istio/proxy</span><br><span class="line">connectTimeout: 10s</span><br><span class="line">discoveryAddress: istio-pilot.istio-system:15007</span><br><span class="line">discoveryRefreshDelay: 1s</span><br><span class="line">drainDuration: 45s</span><br><span class="line">parentShutdownDuration: 60s</span><br><span class="line">proxyAdminPort: 15000</span><br><span class="line">serviceCluster: helloworld</span><br><span class="line">zipkinAddress: zipkin.istio-system:9411</span><br><span class="line"></span><br><span class="line">2019-01-14T06:35:21.726902Z	info	Monitored certs: []envoy.CertSource&#123;envoy.CertSource&#123;Directory:<span class="string">"/etc/certs/"</span>, Files:[]string&#123;<span class="string">"cert-cha</span></span><br><span class="line"><span class="string">in.pem"</span>, <span class="string">"key.pem"</span>, <span class="string">"root-cert.pem"</span>&#125;&#125;&#125;</span><br><span class="line">2019-01-14T06:35:21.727115Z	info	Starting proxy agent</span><br><span class="line">2019-01-14T06:35:21.728269Z	info	Received new config, resetting budget</span><br><span class="line">2019-01-14T06:35:21.728587Z	info	Reconciling configuration (budget 10)</span><br><span class="line">2019-01-14T06:35:21.728626Z	info	Epoch 0 starting</span><br><span class="line">2019-01-14T06:35:21.729334Z	info	Envoy <span class="built_in">command</span>: [-c /etc/istio/proxy/envoy-rev0.json --restart-epoch 0 --drain-time<span class="_">-s</span> 45 --parent-shutd</span><br><span class="line">own-time<span class="_">-s</span> 60 --service-cluster helloworld --service-node sidecar~10.128.5.4~helloworld-v1-8f8dd85-cfz42.default~default.svc.cluster.local --m</span><br><span class="line">ax-obj-name-len 189 --allow-unknown-fields -l warn --v2-config-only]</span><br></pre></td></tr></table></figure>
+<p>本文主要分析 proxy sidecar 方式下的主要逻辑：</p>
+<p><img src="https://www.do1618.com/wp-content/uploads/2019/02/pilot-agent-arch.png" alt="image-20190201172553563"></p>
+<p><a href="https://blog.envoyproxy.io/envoy-hot-restart-1d16b14555b5" target="_blank" rel="noopener">Envoy hot restart</a></p>
+<p>主函数入口：</p>
+<p>istio.io/istio/pilot/cmd/pilot-agent/main.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> err := rootCmd.Execute(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Errora(err)</span><br><span class="line">		os.Exit(<span class="number">-1</span>)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>由于使用的命令行为  <code>pilot-agent proxy sidecar</code>，最终调用的子命令的函数入口</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line">proxyCmd = &amp;cobra.Command&#123;</span><br><span class="line">	Use:   <span class="string">"proxy"</span>,</span><br><span class="line">	Short: <span class="string">"Envoy proxy agent"</span>,</span><br><span class="line">	RunE: <span class="function"><span class="keyword">func</span><span class="params">(c *cobra.Command, args []<span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">            <span class="comment">// ...</span></span><br><span class="line">           <span class="comment">// 用于设置默认配置文件的默认配置相关参数</span></span><br><span class="line">           proxyConfig := model.DefaultProxyConfig()</span><br><span class="line"></span><br><span class="line">		<span class="comment">// set all flags</span></span><br><span class="line">		proxyConfig.CustomConfigFile = customConfigFile</span><br><span class="line">		proxyConfig.ConfigPath = configPath</span><br><span class="line">		proxyConfig.BinaryPath = binaryPath</span><br><span class="line">		proxyConfig.ServiceCluster = serviceCluster</span><br><span class="line">		proxyConfig.DrainDuration = types.DurationProto(drainDuration)</span><br><span class="line">		proxyConfig.ParentShutdownDuration = types.DurationProto(parentShutdownDuration)</span><br><span class="line">		proxyConfig.DiscoveryAddress = discoveryAddress</span><br><span class="line">		proxyConfig.ConnectTimeout = types.DurationProto(connectTimeout)</span><br><span class="line">		proxyConfig.StatsdUdpAddress = statsdUDPAddress</span><br><span class="line">		proxyConfig.ProxyAdminPort = <span class="keyword">int32</span>(proxyAdminPort)</span><br><span class="line">		proxyConfig.Concurrency = <span class="keyword">int32</span>(concurrency)</span><br><span class="line">           </span><br><span class="line">           </span><br><span class="line">            <span class="comment">// ...</span></span><br><span class="line">           <span class="comment">// 1. 启动 status server</span></span><br><span class="line">           <span class="comment">// If a status port was provided, start handling status probes.</span></span><br><span class="line">		<span class="keyword">if</span> statusPort &gt; <span class="number">0</span> &#123;</span><br><span class="line">			parsedPorts, err := parseApplicationPorts()</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> err</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			statusServer := status.NewServer(status.Config&#123;</span><br><span class="line">				AdminPort:        proxyAdminPort,</span><br><span class="line">				StatusPort:       statusPort,</span><br><span class="line">				ApplicationPorts: parsedPorts,</span><br><span class="line">			&#125;)</span><br><span class="line">			<span class="keyword">go</span> statusServer.Run(ctx)</span><br><span class="line">		&#125;</span><br><span class="line">           </span><br><span class="line">           <span class="comment">// 初始化 envoyProxy 对象</span></span><br><span class="line">		envoyProxy := envoy.NewProxy(proxyConfig, role.ServiceNode(), proxyLogLevel, pilotSAN, role.IPAddresses)</span><br><span class="line"></span><br><span class="line">		agent := proxy.NewAgent(envoyProxy, proxy.DefaultRetry)</span><br><span class="line">		watcher := envoy.NewWatcher(certs, agent.ConfigCh())</span><br><span class="line"></span><br><span class="line">           <span class="comment">// 2. 启动 agent </span></span><br><span class="line">		<span class="keyword">go</span> agent.Run(ctx)</span><br><span class="line">           </span><br><span class="line">           <span class="comment">// 3. 启动 watcher</span></span><br><span class="line">		<span class="keyword">go</span> watcher.Run(ctx)</span><br><span class="line"></span><br><span class="line">           <span class="comment">// 4. 主 goroutine 等待信号量</span></span><br><span class="line">		stop := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span><br><span class="line">		cmd.WaitSignal(stop)</span><br><span class="line">		&lt;-stop</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">   &#125;</span><br></pre></td></tr></table></figure>
+<h3 id="status-server"><a href="#status-server" class="headerlink" title="status server"></a>status server</h3><p>如果 statusPort 端口进行了设置，则会启动  statusServer。</p>
+<ul>
+<li>对于 ready 检查，调用的路径为<code>/healthz/ready</code>， 并配合设置的端口 <code>applicationPorts</code> 通过 envoy 的 admin 端口进行对应的端口进行检查，用于决定 envoy 是否已经 ready 接受相对应的流量。</li>
+</ul>
+<blockquote>
+<p>–statusPort uint16                 HTTP Port on which to serve pilot agent status. If zero, agent status will not be provided.</p>
+</blockquote>
+<blockquote>
+<p>–applicationPorts stringSlice      Ports exposed by the application. Used to determine that Envoy is configured and ready to receive traffic.</p>
+</blockquote>
+<p>检查原理是通过本地管理端口，如 <code>http://127.0.0.1:15000/listeners</code> 获取 envoy 当前监听的全部端口，然后将配置的端口 <code>applicationPorts</code> 在监听的端口中进行查找，来决定 envoy 是否 ready。</p>
+<ul>
+<li><p>应用端口检查 </p>
+<p>检查的路径为 <code>/url</code> 路径，在 header 中设置 <code>istio-app-probe-port</code> 端口，使用 访问路径中的 <code>url</code> 来进行检查，最终调用的是 <code>http://127.0.0.1:istio-app-probe-port/url</code>，头部设置的全部参数也都会传递到别检测的服务端口上；</p>
+</li>
+</ul>
+<h3 id="agent"><a href="#agent" class="headerlink" title="agent"></a>agent</h3><p>agent 的函数入口代码位于 <code>istio.io/istio/pilot/pkg/proxy/agent.go</code> 文件中。</p>
+<p>interface 定义：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Agent <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// ConfigCh returns the config channel used to send configuration updates.</span></span><br><span class="line">	<span class="comment">// Agent compares the current active configuration to the desired state and</span></span><br><span class="line">	<span class="comment">// initiates a restart if necessary. If the restart fails, the agent attempts</span></span><br><span class="line">	<span class="comment">// to retry with an exponential back-off.</span></span><br><span class="line">	ConfigCh() <span class="keyword">chan</span>&lt;- <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Run starts the agent control loop and awaits for a signal on the input</span></span><br><span class="line">	<span class="comment">// channel to exit the loop.</span></span><br><span class="line">	Run(ctx context.Context)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>agent 结构定义为：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> agent <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// proxy commands</span></span><br><span class="line">	proxy Proxy</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 记录 envoy 重启的各种参数，包括 time、budget、MaxRetries 和 InitialInterval 间隔</span></span><br><span class="line">    <span class="comment">// 对于异常退出的进程，一般来说抢救 10 次，中间使用退步算法，如果 10 次仍然不好，</span></span><br><span class="line">    <span class="comment">// 则会退出 proxy 容器，启动新的容器</span></span><br><span class="line">	<span class="comment">// retry configuration</span></span><br><span class="line">	retry Retry</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 期望使用的配置文件，当前为对应证书的 sha256 的值</span></span><br><span class="line">	<span class="comment">// desired configuration state</span></span><br><span class="line">	desiredConfig <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 用来保存全部对应的 epoch 对应的证书 sha256 的值</span></span><br><span class="line">	<span class="comment">// active epochs and their configurations</span></span><br><span class="line">	epochs <span class="keyword">map</span>[<span class="keyword">int</span>]<span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 当前使用的配置文件，为对应证书的 sha256 的值</span></span><br><span class="line">	<span class="comment">// current configuration is the highest epoch configuration</span></span><br><span class="line">	currentConfig <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 读取从 watcher 监护到证书变化的 channel</span></span><br><span class="line">	<span class="comment">// channel for posting desired configurations</span></span><br><span class="line">	configCh <span class="keyword">chan</span> <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 用于监护管理 Envoy 的 channel</span></span><br><span class="line">	<span class="comment">// channel for proxy exit notifications</span></span><br><span class="line">	statusCh <span class="keyword">chan</span> exitStatus</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 记录 epoch 对应的  abortCh channel，当前最大为10个，最大允许10个正在重启中的 proxy </span></span><br><span class="line">	<span class="comment">// channel for aborting running instances</span></span><br><span class="line">	abortCh <span class="keyword">map</span>[<span class="keyword">int</span>]<span class="keyword">chan</span> error</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>agent  接口体中外部的控制主要是通过 channel 来实现的：</p>
+<ul>
+<li><p>configCh 用于接受到是否有配置文件发生变化，当前主要是有 watcher goroutine 来监视相关的证书，如果证书发生了变化或者定时（当前为10s），configCh 就会节后到 watcher 发送的 sha256 摘要值；</p>
+</li>
+<li><p>statusCh 用于管理启动 envoy 后的状态通道，用于监视 envoy 进程的状态；</p>
+</li>
+<li><p>proxy 对象则是实现了对于 envoy 管理的主要工作，在 proxyCmd 的函数中初始化：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">envoyProxy := envoy.NewProxy(proxyConfig, role.ServiceNode(), proxyLogLevel, pilotSAN, role.IPAddresses)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>其中 Proxy 为接口定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Proxy defines command interface for a proxy</span></span><br><span class="line"><span class="keyword">type</span> Proxy <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Run command for a config, epoch, and abort channel</span></span><br><span class="line">	Run(<span class="keyword">interface</span>&#123;&#125;, <span class="keyword">int</span>, &lt;-<span class="keyword">chan</span> error) error</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Cleanup command for an epoch</span></span><br><span class="line">	Cleanup(<span class="keyword">int</span>)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Panic command is invoked with the desired config when all retries to</span></span><br><span class="line">	<span class="comment">// start the proxy fail just before the agent terminating</span></span><br><span class="line">	Panic(<span class="keyword">interface</span>&#123;&#125;)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>agent 的主入口函数为: </p>
+<p>istio.io/istio/pilot/pkg/proxy/agent.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(a *agent)</span> <span class="title">Run</span><span class="params">(ctx context.Context)</span></span> &#123;</span><br><span class="line">	log.Info(<span class="string">"Starting proxy agent"</span>)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Throttle processing up to smoothed 1 qps with bursts up to 10 qps.</span></span><br><span class="line">	<span class="comment">// High QPS is needed to process messages on all channels.</span></span><br><span class="line">	rateLimiter := rate.NewLimiter(<span class="number">1</span>, <span class="number">10</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">var</span> reconcileTimer *time.Timer</span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		err := rateLimiter.Wait(ctx)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			a.terminate()</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// maximum duration or duration till next restart</span></span><br><span class="line">		<span class="keyword">var</span> delay time.Duration = <span class="number">1</span>&lt;&lt;<span class="number">63</span> - <span class="number">1</span></span><br><span class="line">		<span class="keyword">if</span> a.retry.restart != <span class="literal">nil</span> &#123;</span><br><span class="line">            <span class="comment">// 如果设置了下次重启的时间间隔，则 delay 设置为该值</span></span><br><span class="line">			delay = time.Until(*a.retry.restart)</span><br><span class="line">		&#125;</span><br><span class="line">        </span><br><span class="line">        <span class="comment">// 停止原有的 reconcileTimer， 并设置成当前的 delay 值</span></span><br><span class="line">		<span class="keyword">if</span> reconcileTimer != <span class="literal">nil</span> &#123;</span><br><span class="line">			reconcileTimer.Stop()</span><br><span class="line">		&#125;</span><br><span class="line">		reconcileTimer = time.NewTimer(delay)</span><br><span class="line"></span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">        <span class="comment">//  1. 如果相关的配置发生了变化，如果没有变化则忽略</span></span><br><span class="line">		<span class="keyword">case</span> config := &lt;-a.configCh:</span><br><span class="line">			<span class="keyword">if</span> !reflect.DeepEqual(a.desiredConfig, config) &#123;</span><br><span class="line">				log.Infof(<span class="string">"Received new config, resetting budget"</span>)</span><br><span class="line">				a.desiredConfig = config</span><br><span class="line"></span><br><span class="line">				<span class="comment">// reset retry budget if and only if the desired config changes</span></span><br><span class="line">                <span class="comment">// 因为配置发生了变化，把下一次重启时间间隔设置为最大</span></span><br><span class="line">				a.retry.budget = a.retry.MaxRetries</span><br><span class="line">				a.reconcile()</span><br><span class="line">			&#125;</span><br><span class="line">            </span><br><span class="line">        <span class="comment">// 默认的重试策略值为 </span></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">		DefaultRetry = Retry&#123;</span></span><br><span class="line"><span class="comment">			MaxRetries:      10,</span></span><br><span class="line"><span class="comment">			InitialInterval: 200 * time.Millisecond,</span></span><br><span class="line"><span class="comment">		&#125;*/</span></span><br><span class="line">            </span><br><span class="line">        <span class="comment">// 2. 如果 proxy-envoy 的状态发生了变化</span></span><br><span class="line">		<span class="keyword">case</span> status := &lt;-a.statusCh:</span><br><span class="line">			<span class="comment">// delete epoch record and update current config</span></span><br><span class="line">			<span class="comment">// avoid self-aborting on non-abort error</span></span><br><span class="line">			<span class="built_in">delete</span>(a.epochs, status.epoch)</span><br><span class="line">			<span class="built_in">delete</span>(a.abortCh, status.epoch)</span><br><span class="line">			a.currentConfig = a.epochs[a.latestEpoch()]</span><br><span class="line"></span><br><span class="line">            <span class="comment">// errAbort 为被正常取消情况下的退出，比如 &lt;-ctx.Done() 情况下调用 a.terminate()</span></span><br><span class="line">			<span class="keyword">if</span> status.err == errAbort &#123;</span><br><span class="line">				log.Infof(<span class="string">"Epoch %d aborted"</span>, status.epoch)</span><br><span class="line">			&#125; <span class="keyword">else</span> <span class="keyword">if</span> status.err != <span class="literal">nil</span> &#123; <span class="comment">// 异常情况下的退出</span></span><br><span class="line">				log.Warnf(<span class="string">"Epoch %d terminated with an error: %v"</span>, status.epoch, status.err)</span><br><span class="line"></span><br><span class="line">				<span class="comment">// <span class="doctag">NOTE:</span> due to Envoy hot restart race conditions, an error from the</span></span><br><span class="line">				<span class="comment">// process requires aggressive non-graceful restarts by killing all</span></span><br><span class="line">				<span class="comment">// existing proxy instances</span></span><br><span class="line">                <span class="comment">//  Envoy热重启竞争条件，进程中的错误需要通过终止所有现有代理实例来进行积极的非正常重启</span></span><br><span class="line">				a.abortAll()</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">// 正常情况下的退出</span></span><br><span class="line">				log.Infof(<span class="string">"Epoch %d exited normally"</span>, status.epoch)</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="comment">// cleanup for the epoch</span></span><br><span class="line">            <span class="comment">// 删除当前 epoch 对应的配置文件</span></span><br><span class="line">			a.proxy.Cleanup(status.epoch)</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 设置出错后的重试，由于 proxy 可能已中止，因此当前配置可能已过期。当前配置</span></span><br><span class="line">            <span class="comment">// 将在中止时更改，因此在中止之前重试将不会进行。</span></span><br><span class="line">            <span class="comment">// 如果重新启动的计划尚未安排，需要重新安排相关重启。</span></span><br><span class="line">			<span class="keyword">if</span> status.err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="comment">// skip retrying twice by checking retry restart delay</span></span><br><span class="line">                <span class="comment">// a.retry.restart nil 表示还未安排相关的重启进程</span></span><br><span class="line">				<span class="keyword">if</span> a.retry.restart == <span class="literal">nil</span> &#123;</span><br><span class="line">					<span class="keyword">if</span> a.retry.budget &gt; <span class="number">0</span> &#123;</span><br><span class="line">						delayDuration := a.retry.InitialInterval * (<span class="number">1</span> &lt;&lt; <span class="keyword">uint</span>(a.retry.MaxRetries-a.retry.budget))</span><br><span class="line">						restart := time.Now().Add(delayDuration)</span><br><span class="line">						a.retry.restart = &amp;restart</span><br><span class="line">						a.retry.budget = a.retry.budget - <span class="number">1</span></span><br><span class="line">						log.Infof(<span class="string">"Epoch %d: set retry delay to %v, budget to %d"</span>, status.epoch, delayDuration, a.retry.budget)</span><br><span class="line">					&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                        <span class="comment">// 耗费了所有的重启次数尝试，仍然不能正常启动，退出容器</span></span><br><span class="line">						log.Error(<span class="string">"Permanent error: budget exhausted trying to fulfill the desired configuration"</span>)</span><br><span class="line">						a.proxy.Panic(status.epoch)</span><br><span class="line">						<span class="keyword">return</span></span><br><span class="line">					&#125;</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123; <span class="comment">// 重启已经安排过了</span></span><br><span class="line">					log.Debugf(<span class="string">"Epoch %d: restart already scheduled"</span>, status.epoch)</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 3. reconcileTimer 时间到了</span></span><br><span class="line">		<span class="keyword">case</span> &lt;-reconcileTimer.C:</span><br><span class="line">			a.reconcile()</span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> _, more := &lt;-ctx.Done():</span><br><span class="line">			<span class="keyword">if</span> !more &#123; <span class="comment">// 表明被关闭了</span></span><br><span class="line">				a.terminate()</span><br><span class="line">				<span class="keyword">return</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>简化一下为：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> &#123;</span><br><span class="line">	<span class="comment">// 根据当前的重启策略设置 reconcileTimer 定时器的时间</span></span><br><span class="line">	<span class="keyword">select</span> &#123;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 接收到的配置如果和当前使用的而配置不相同，则调用, a.reconcile(); 相同则忽略</span></span><br><span class="line">	<span class="keyword">case</span> config := &lt;-a.configCh:</span><br><span class="line">		a.reconcile()</span><br><span class="line">   </span><br><span class="line">   <span class="comment">// 检测各种错误值，如果是特定的 errAbort 退出或者 根据退出的各种参数检查判断是预期安排的重启</span></span><br><span class="line">   <span class="comment">// 还是异常退出；同时根据重启的策略设置相关的重启策略，在后续的循环中设置 reconcileTimer 时间</span></span><br><span class="line">   <span class="keyword">case</span> status := &lt;-a.statusCh:</span><br><span class="line">        <span class="comment">// 非预期错误的错误处理</span></span><br><span class="line">        <span class="comment">// 如果是重启策略失效了，则直接退出当前循环</span></span><br><span class="line">        <span class="comment">// 特定的重启策略内，设置下次重启的时间</span></span><br><span class="line">        <span class="comment">// 特定的重启策略内，设置下次重启的时间</span></span><br><span class="line">        </span><br><span class="line">   <span class="comment">// 设置的重启时间到达</span></span><br><span class="line">   <span class="keyword">case</span> &lt;-reconcileTimer.C:</span><br><span class="line">			a.reconcile()</span><br><span class="line">    </span><br><span class="line">   <span class="comment">// 如果是取消，则全部退出</span></span><br><span class="line">   <span class="keyword">case</span> _, more := &lt;-ctx.Done():</span><br><span class="line">	  <span class="keyword">if</span> !more &#123;</span><br><span class="line">			a.terminate()</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">	  &#125;</span><br></pre></td></tr></table></figure>
+<p>在配置发生变化或者异常重启设置重启策略后，最终调用的函数为 <code>reconcile</code>：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(a *agent)</span> <span class="title">reconcile</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="comment">// cancel any scheduled restart</span></span><br><span class="line">	a.retry.restart = <span class="literal">nil</span></span><br><span class="line"></span><br><span class="line">	log.Infof(<span class="string">"Reconciling retry (budget %d)"</span>, a.retry.budget)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// check that the config is current</span></span><br><span class="line">	<span class="keyword">if</span> reflect.DeepEqual(a.desiredConfig, a.currentConfig) &#123;</span><br><span class="line">		log.Infof(<span class="string">"Desired configuration is already applied"</span>)</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// discover and increment the latest running epoch</span></span><br><span class="line">	epoch := a.latestEpoch() + <span class="number">1</span></span><br><span class="line">	<span class="comment">// buffer aborts to prevent blocking on failing proxy</span></span><br><span class="line">	abortCh := <span class="built_in">make</span>(<span class="keyword">chan</span> error, maxAborts)</span><br><span class="line">	a.epochs[epoch] = a.desiredConfig</span><br><span class="line">	a.abortCh[epoch] = abortCh</span><br><span class="line">	a.currentConfig = a.desiredConfig</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 最终的调用，会将相关相关结果放到 abortCh channel 中</span></span><br><span class="line">	<span class="keyword">go</span> a.runWait(a.desiredConfig, epoch, abortCh)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>reconcile</code> 设置相关参数后，最终启动一个新的 goroutine 来进行启动最终的程序</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// runWait runs the start-up command as a go routine and waits for it to finish</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(a *agent)</span> <span class="title">runWait</span><span class="params">(config <span class="keyword">interface</span>&#123;&#125;, epoch <span class="keyword">int</span>, abortCh &lt;-<span class="keyword">chan</span> error)</span></span> &#123;</span><br><span class="line">	log.Infof(<span class="string">"Epoch %d starting"</span>, epoch)</span><br><span class="line">	err := a.proxy.Run(config, epoch, abortCh)</span><br><span class="line">	a.statusCh &lt;- exitStatus&#123;epoch: epoch, err: err&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在 <code>runWait</code> 函数中，最终调用 <code>a.proxy.Run(config, epoch, abortCh)</code>，并将其返回的错误值放到 agent 的 <code>statusCh</code> channel 中。</p>
+<p>对于 envoy 的启动过程可以通过 <code>proxy.run</code> 来进行总结分析： </p>
+<p>envoy 的结构体定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> envoy <span class="keyword">struct</span> &#123;</span><br><span class="line">	config    meshconfig.ProxyConfig  <span class="comment">// 配置文件</span></span><br><span class="line">	node      <span class="keyword">string</span></span><br><span class="line">	extraArgs []<span class="keyword">string</span></span><br><span class="line">	pilotSAN  []<span class="keyword">string</span></span><br><span class="line">	opts      <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">interface</span>&#123;&#125;</span><br><span class="line">	errChan   <span class="keyword">chan</span> error</span><br><span class="line">	nodeIPs   []<span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>istio.io/istio/pilot/pkg/proxy/envoy/proxy.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(e *envoy)</span> <span class="title">Run</span><span class="params">(config <span class="keyword">interface</span>&#123;&#125;, epoch <span class="keyword">int</span>, abort &lt;-<span class="keyword">chan</span> error)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">var</span> fname <span class="keyword">string</span></span><br><span class="line">	<span class="comment">// Note: the cert checking still works, the generated file is updated if certs are changed.</span></span><br><span class="line">	<span class="comment">// We just don't save the generated file, but use a custom one instead. Pilot will keep</span></span><br><span class="line">	<span class="comment">// monitoring the certs and restart if the content of the certs changes.</span></span><br><span class="line">    <span class="comment">// 1. 如果指定了模板文件，则使用用户指定的，否则则使用默认的</span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(e.config.CustomConfigFile) &gt; <span class="number">0</span> &#123;</span><br><span class="line">		<span class="comment">// there is a custom configuration. Don't write our own config - but keep watching the certs.</span></span><br><span class="line">		fname = e.config.CustomConfigFile</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		out, err := bootstrap.WriteBootstrap(&amp;e.config, e.node, epoch, e.pilotSAN, e.opts, os.Environ(), e.nodeIPs)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Errora(<span class="string">"Failed to generate bootstrap config"</span>, err)</span><br><span class="line">			os.Exit(<span class="number">1</span>) <span class="comment">// Prevent infinite loop attempting to write the file, let k8s/systemd report</span></span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		fname = out</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// spin up a new Envoy process</span></span><br><span class="line">	args := e.args(fname, epoch)</span><br><span class="line">	log.Infof(<span class="string">"Envoy command: %v"</span>, args)</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* #nosec */</span></span><br><span class="line">	cmd := exec.Command(e.config.BinaryPath, args...)</span><br><span class="line">	cmd.Stdout = os.Stdout</span><br><span class="line">	cmd.Stderr = os.Stderr</span><br><span class="line">	<span class="keyword">if</span> err := cmd.Start(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Set if the caller is monitoring envoy, for example in tests or if envoy runs in same</span></span><br><span class="line">	<span class="comment">// container with the app.</span></span><br><span class="line">	<span class="keyword">if</span> e.errChan != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// Caller passed a channel, will wait itself for termination</span></span><br><span class="line">		<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">			e.errChan &lt;- cmd.Wait()</span><br><span class="line">		&#125;()</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 通过 done channel 来获取 evnoy 启动的最终状态</span></span><br><span class="line">	done := <span class="built_in">make</span>(<span class="keyword">chan</span> error, <span class="number">1</span>)</span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		done &lt;- cmd.Wait()</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 等待 abort channel 和 done，用于结束 envoy 和正确返回当前的启动状态</span></span><br><span class="line">	<span class="keyword">select</span> &#123;</span><br><span class="line">	<span class="keyword">case</span> err := &lt;-abort:</span><br><span class="line">		log.Warnf(<span class="string">"Aborting epoch %d"</span>, epoch)</span><br><span class="line">		<span class="keyword">if</span> errKill := cmd.Process.Kill(); errKill != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Warnf(<span class="string">"killing epoch %d caused an error %v"</span>, epoch, errKill)</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	<span class="keyword">case</span> err := &lt;-done:</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>函数 <code>bootstrap.WriteBootstrap</code> 用来生成 envoy 使用的初始配置文件，默认的配置模板文件路径为 <code>/var/lib/istio/envoy/envoy_bootstrap_tmpl.json</code>，该文件也可以通过参数 <code>templateFile</code> 传递进来。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// istio.io/istio/pkg/bootstrap/bootstrap_config.go</span></span><br><span class="line">DefaultCfgDir     = <span class="string">"/var/lib/istio/envoy/envoy_bootstrap_tmpl.json"</span></span><br></pre></td></tr></table></figure>
+<p>整体内容参见 <a href="https://gist.github.com/DavadDi/be65927559c4d9cef023cf1e63918079#file-envoy_bootstrap_tmpl-json" target="_blank" rel="noopener">file-envoy_bootstrap_tmpl-json</a></p>
+<p>envoy_bootstrap_tmpl.json + meshconfig.ProxyConfig + epoch = envoy 初始化文件，文件名格式为 ”envoy-rev%d.json“， 其中 <code>%d</code> 会被替换成 <code>epoch</code> 的值。</p>
+<p>在 envoy 默认配置输出成功以后，就接着构造 envoy 启动的参数，主要函数如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(e *envoy)</span> <span class="title">args</span><span class="params">(fname <span class="keyword">string</span>, epoch <span class="keyword">int</span>)</span> []<span class="title">string</span></span> &#123;</span><br><span class="line">	startupArgs := []<span class="keyword">string</span>&#123;<span class="string">"-c"</span>, fname,</span><br><span class="line">		<span class="string">"--restart-epoch"</span>, fmt.Sprint(epoch),</span><br><span class="line">		<span class="string">"--drain-time-s"</span>, fmt.Sprint(<span class="keyword">int</span>(convertDuration(e.config.DrainDuration) / time.Second)),</span><br><span class="line">		<span class="string">"--parent-shutdown-time-s"</span>, fmt.Sprint(<span class="keyword">int</span>(convertDuration(e.config.ParentShutdownDuration) / time.Second)),</span><br><span class="line">		<span class="string">"--service-cluster"</span>, e.config.ServiceCluster,</span><br><span class="line">		<span class="string">"--service-node"</span>, e.node,</span><br><span class="line">		<span class="string">"--max-obj-name-len"</span>, fmt.Sprint(e.config.StatNameLength),</span><br><span class="line">		<span class="string">"--allow-unknown-fields"</span>,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	startupArgs = <span class="built_in">append</span>(startupArgs, e.extraArgs...)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> e.config.Concurrency &gt; <span class="number">0</span> &#123;</span><br><span class="line">		startupArgs = <span class="built_in">append</span>(startupArgs, <span class="string">"--concurrency"</span>, fmt.Sprint(e.config.Concurrency))</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> startupArgs</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>到此为止，envoy 的配置文件和启动命令行已经构造完成，后续就需要采用 <code>exec.Command</code>  命令来进行启动。</p>
+<p>至此 agent 对于 envoy 的启动和管理流程结束。</p>
+<h3 id="watcher"><a href="#watcher" class="headerlink" title="watcher"></a>watcher</h3><p>watcher 的整体逻辑相对比较简单，就是 watch 相关的证书变化，当证书有变化或者定期（10s），向 agent 发送配置当前的 sha256 摘要，agent 如果发现配置已经变化，则会触发 agent 重启 envoy，并增加 epoch 的值。</p>
+<p>istio.io/istio/pilot/pkg/proxy/envoy/watcher.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(w *watcher)</span> <span class="title">Run</span><span class="params">(ctx context.Context)</span></span> &#123;</span><br><span class="line">	<span class="comment">// kick start the proxy with partial state (in case there are no notifications coming)</span></span><br><span class="line">	w.SendConfig()  <span class="comment">// 用于向 agent 发送相关的摘要值</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// monitor certificates</span></span><br><span class="line">	certDirs := <span class="built_in">make</span>([]<span class="keyword">string</span>, <span class="number">0</span>, <span class="built_in">len</span>(w.certs))</span><br><span class="line">	<span class="keyword">for</span> _, cert := <span class="keyword">range</span> w.certs &#123;</span><br><span class="line">		certDirs = <span class="built_in">append</span>(certDirs, cert.Directory)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">go</span> watchCerts(ctx, certDirs, watchFileEvents, defaultMinDelay, w.SendConfig)</span><br><span class="line"></span><br><span class="line">	&lt;-ctx.Done()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>watchCerts 的函数主体：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// watchCerts watches all certificate directories and calls the provided</span></span><br><span class="line"><span class="comment">// `updateFunc` method when changes are detected. This method is blocking</span></span><br><span class="line"><span class="comment">// so it should be run as a goroutine.</span></span><br><span class="line"><span class="comment">// updateFunc will not be called more than one time per minDelay.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">watchCerts</span><span class="params">(ctx context.Context, certsDirs []<span class="keyword">string</span>, watchFileEventsFn watchFileEventsFn,</span></span></span><br><span class="line"><span class="function"><span class="params">	minDelay time.Duration, updateFunc <span class="keyword">func</span>()</span>)</span> &#123;</span><br><span class="line">	fw, err := fsnotify.NewWatcher()</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Warnf(<span class="string">"failed to create a watcher for certificate files: %v"</span>, err)</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">defer</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">if</span> err := fw.Close(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Warnf(<span class="string">"closing watcher encounters an error %v"</span>, err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// watch all directories</span></span><br><span class="line">	<span class="keyword">for</span> _, d := <span class="keyword">range</span> certsDirs &#123;</span><br><span class="line">		<span class="keyword">if</span> err := fw.Watch(d); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Warnf(<span class="string">"watching %s encounters an error %v"</span>, d, err)</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	watchFileEventsFn(ctx, fw.Event, minDelay, updateFunc)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>关于监听的相关证书，则来自于注入时从命名空间中 secret 中加载到 pod 中的文件，deployment文件如下：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">extensions/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  creationTimestamp:</span> <span class="literal">null</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">helloworld-v2</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  replicas:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">  strategy:</span> <span class="string">&#123;&#125;</span></span><br><span class="line"><span class="attr">  template:</span></span><br><span class="line"><span class="attr">    metadata:</span></span><br><span class="line"><span class="attr">      labels:</span></span><br><span class="line"><span class="attr">        app:</span> <span class="string">helloworld</span></span><br><span class="line"><span class="attr">        version:</span> <span class="string">v2</span></span><br><span class="line"><span class="attr">    spec:</span></span><br><span class="line"><span class="attr">      containers:</span></span><br><span class="line"><span class="attr">      - image:</span> <span class="string">istio/examples-helloworld-v2</span></span><br><span class="line"><span class="attr">        imagePullPolicy:</span> <span class="string">IfNotPresent</span></span><br><span class="line"><span class="attr">        name:</span> <span class="string">helloworld</span></span><br><span class="line"><span class="attr">        ports:</span></span><br><span class="line"><span class="attr">        - containerPort:</span> <span class="number">5000</span></span><br><span class="line"><span class="attr">        resources:</span></span><br><span class="line"><span class="attr">          requests:</span></span><br><span class="line"><span class="attr">            cpu:</span> <span class="number">100</span><span class="string">m</span></span><br><span class="line"><span class="attr">      - args:</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">proxy</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">sidecar</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--configPath</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">/etc/istio/proxy</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--binaryPath</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">/usr/local/bin/envoy</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--serviceCluster</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">helloworld</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--drainDuration</span></span><br><span class="line"><span class="bullet">        -</span> <span class="number">45</span><span class="string">s</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--parentShutdownDuration</span></span><br><span class="line"><span class="bullet">        -</span> <span class="number">1</span><span class="string">m0s</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--discoveryAddress</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">istio-pilot.istio-system:15007</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--discoveryRefreshDelay</span></span><br><span class="line"><span class="bullet">        -</span> <span class="number">1</span><span class="string">s</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--zipkinAddress</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">zipkin.istio-system:9411</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--connectTimeout</span></span><br><span class="line"><span class="bullet">        -</span> <span class="number">10</span><span class="string">s</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--proxyAdminPort</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">"15000"</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">--controlPlaneAuthPolicy</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">NONE</span></span><br><span class="line"><span class="attr">        env:</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">POD_NAME</span></span><br><span class="line"><span class="attr">          valueFrom:</span></span><br><span class="line"><span class="attr">            fieldRef:</span></span><br><span class="line"><span class="attr">              fieldPath:</span> <span class="string">metadata.name</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">POD_NAMESPACE</span></span><br><span class="line"><span class="attr">          valueFrom:</span></span><br><span class="line"><span class="attr">            fieldRef:</span></span><br><span class="line"><span class="attr">              fieldPath:</span> <span class="string">metadata.namespace</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">INSTANCE_IP</span></span><br><span class="line"><span class="attr">          valueFrom:</span></span><br><span class="line"><span class="attr">            fieldRef:</span></span><br><span class="line"><span class="attr">              fieldPath:</span> <span class="string">status.podIP</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">ISTIO_META_POD_NAME</span></span><br><span class="line"><span class="attr">          valueFrom:</span></span><br><span class="line"><span class="attr">            fieldRef:</span></span><br><span class="line"><span class="attr">              fieldPath:</span> <span class="string">metadata.name</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">ISTIO_META_INTERCEPTION_MODE</span></span><br><span class="line"><span class="attr">          value:</span> <span class="string">REDIRECT</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">ISTIO_METAJSON_LABELS</span></span><br><span class="line"><span class="attr">          value:</span> <span class="string">|</span></span><br><span class="line"><span class="string">            &#123;"app":"helloworld","version":"v2"&#125;</span></span><br><span class="line"><span class="string"></span><span class="attr">        image:</span> <span class="string">docker.io/istio/proxyv2:1.0.5</span></span><br><span class="line"><span class="attr">        imagePullPolicy:</span> <span class="string">IfNotPresent</span></span><br><span class="line"><span class="attr">        name:</span> <span class="string">istio-proxy</span></span><br><span class="line"><span class="attr">        ports:</span></span><br><span class="line"><span class="attr">        - containerPort:</span> <span class="number">15090</span></span><br><span class="line"><span class="attr">          name:</span> <span class="string">http-envoy-prom</span></span><br><span class="line"><span class="attr">          protocol:</span> <span class="string">TCP</span></span><br><span class="line"><span class="attr">        resources:</span></span><br><span class="line"><span class="attr">          requests:</span></span><br><span class="line"><span class="attr">            cpu:</span> <span class="number">10</span><span class="string">m</span></span><br><span class="line"><span class="attr">        securityContext:</span></span><br><span class="line"><span class="attr">          readOnlyRootFilesystem:</span> <span class="literal">true</span></span><br><span class="line"><span class="attr">          runAsUser:</span> <span class="number">1337</span></span><br><span class="line"><span class="attr">        volumeMounts:</span></span><br><span class="line"><span class="attr">        - mountPath:</span> <span class="string">/etc/istio/proxy</span></span><br><span class="line"><span class="attr">          name:</span> <span class="string">istio-envoy</span></span><br><span class="line"><span class="attr">        - mountPath:</span> <span class="string">/etc/certs/</span>   <span class="comment"># 将证书挂载的目录， watcher 会监视该目录</span></span><br><span class="line"><span class="attr">          name:</span> <span class="string">istio-certs</span></span><br><span class="line"><span class="attr">          readOnly:</span> <span class="literal">true</span></span><br><span class="line"><span class="attr">      initContainers:</span></span><br><span class="line"><span class="attr">      - args:</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-p</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">"15001"</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-u</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">"1337"</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-m</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">REDIRECT</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-i</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">'*'</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-x</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">""</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-b</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">"5000"</span></span><br><span class="line"><span class="bullet">        -</span> <span class="bullet">-d</span></span><br><span class="line"><span class="bullet">        -</span> <span class="string">""</span></span><br><span class="line"><span class="attr">        image:</span> <span class="string">docker.io/istio/proxy_init:1.0.5</span></span><br><span class="line"><span class="attr">        imagePullPolicy:</span> <span class="string">IfNotPresent</span></span><br><span class="line"><span class="attr">        name:</span> <span class="string">istio-init</span></span><br><span class="line"><span class="attr">        resources:</span> <span class="string">&#123;&#125;</span></span><br><span class="line"><span class="attr">        securityContext:</span></span><br><span class="line"><span class="attr">          capabilities:</span></span><br><span class="line"><span class="attr">            add:</span></span><br><span class="line"><span class="bullet">            -</span> <span class="string">NET_ADMIN</span></span><br><span class="line"><span class="attr">          privileged:</span> <span class="literal">true</span></span><br><span class="line"><span class="attr">      volumes:</span></span><br><span class="line"><span class="attr">      - emptyDir:</span></span><br><span class="line"><span class="attr">          medium:</span> <span class="string">Memory</span></span><br><span class="line"><span class="attr">        name:</span> <span class="string">istio-envoy</span></span><br><span class="line"><span class="attr">      - name:</span> <span class="string">istio-certs</span>    <span class="comment"># 来自于 istio.default 的 secret</span></span><br><span class="line"><span class="attr">        secret:</span></span><br><span class="line"><span class="attr">          optional:</span> <span class="literal">true</span></span><br><span class="line"><span class="attr">          secretName:</span> <span class="string">istio.default</span></span><br></pre></td></tr></table></figure>
+<p>使用 kubectl 命令验证：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kubectl get secrets istio.default</span></span><br><span class="line">NAME            TYPE                    DATA   AGE</span><br><span class="line">istio.default   istio.io/key-and-cert   3      17d</span><br><span class="line"></span><br><span class="line"><span class="comment"># kubectl get secrets istio.default -o yaml</span></span><br><span class="line">apiVersion: v1</span><br><span class="line">data:</span><br><span class="line">  cert-chain.pem: xxxx</span><br><span class="line">  key.pem: xxxx==</span><br><span class="line">  root-cert.pem: xxxx==</span><br><span class="line">kind: Secret</span><br><span class="line">metadata:</span><br><span class="line">  annotations:</span><br><span class="line">    istio.io/service-account.name: default</span><br><span class="line">  creationTimestamp: 2019-01-15T08:24:26Z</span><br><span class="line">  name: istio.default</span><br><span class="line">  namespace: default</span><br><span class="line">  resourceVersion: <span class="string">"16685160"</span></span><br><span class="line">  selfLink: /api/v1/namespaces/default/secrets/istio.default</span><br><span class="line">  uid: f863ce6f-189e-11e9-ab53-00163e0c1552</span><br><span class="line"><span class="built_in">type</span>: istio.io/key-and-cert</span><br></pre></td></tr></table></figure>
+<p>证书的生成和管理是由 Citadel 负责的，具体细节可以参见 <a href="https://istio.io/help/ops/security/keys-and-certs/" target="_blank" rel="noopener">Keys and Certificates</a> ，可以使用以下命令来检查证书的详细信息</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># jq 为命令下处理 json 的工具，参见 </span></span><br><span class="line"><span class="comment"># https://www.ibm.com/developerworks/cn/linux/1612_chengg_jq/index.html</span></span><br><span class="line">$ sudo yum install -y jq  </span><br><span class="line"></span><br><span class="line">$ kubectl get secret -o json istio.default | jq -r <span class="string">'.data["cert-chain.pem"]'</span> | base64 --decode | openssl x509 -noout -text</span><br><span class="line"></span><br><span class="line">Certificate:</span><br><span class="line">    Data:</span><br><span class="line">        Version: 3 (0x2)</span><br><span class="line">        Serial Number:</span><br><span class="line">            07:d1:25:13:1c:38:db:ef:89:8e:95:2e:d1:6c:b5:4d</span><br><span class="line">    Signature Algorithm: sha256WithRSAEncryption</span><br><span class="line">        Issuer: O=k8s.cluster.local</span><br><span class="line">        Validity</span><br><span class="line">            Not Before: Jan 15 08:24:26 2019 GMT</span><br><span class="line">            Not After : Apr 15 08:24:26 2019 GMT</span><br><span class="line">        Subject: O=</span><br><span class="line">        Subject Public Key Info:</span><br><span class="line">            Public Key Algorithm: rsaEncryption</span><br><span class="line">                Public-Key: (2048 bit)</span><br><span class="line">                Modulus:</span><br><span class="line">                    00:d1:13:34:58:e7:b0:6e:b5:07:0e:bd:7f:d5:a0:</span><br><span class="line">                    66:d9:4a:2a:6d:ec:bd:26:ab:22:26:31:c7:c9:48:</span><br><span class="line">                    da:57:9a:5a:91:b3:7c:78:2c:c4:8d:14:4b:b1:b4:</span><br><span class="line">                    a4:29:3d:26:d1:ad:8d:6e:6f:b0:27:64:31:93:cf:</span><br><span class="line">                    43:be:f4:04:0a:d2:0f:e6:dc:45:4a:5d:38:65:c0:</span><br><span class="line">                    08:44:25:5f:e8:2d:c3:2a:9a:6b:82:bb:27:81:59:</span><br><span class="line">                    c7:f5:38:66:b1:f2:06:eb:94:46:34:47:c5:b1:9d:</span><br><span class="line">                    01:59:04:e7:8e:df:bf:ed:17:f8:16:06:9d:85:c0:</span><br><span class="line">                    e9:43:0f:3a:a0:b6:b9:64:50:3e:e1:26:e3:03:d4:</span><br><span class="line">                    dc:43:08:ef:de:af:56:5c:d5:6c:c1:72:72:7b:f5:</span><br><span class="line">                    05:f8:09:15:08:2d:f3:5b:c7:57:7d:1a:15:72:90:</span><br><span class="line">                    3e:df:0a:e6:a1:e3:d9:81:9f:bb:9c:f2:c5:da:7f:</span><br><span class="line">                    48:a6:4d:12:f7:5e:e8:21:99:1d:f0:95:d7:c5:1a:</span><br><span class="line">                    34:d5:a7:56:79:4b:dd:82:a1:39:cc:d5:0b:e3:fa:</span><br><span class="line">                    92:04:21:38:89:41:7c:9b:12:aa:c4:5f:93:c1:1d:</span><br><span class="line">                    <span class="built_in">fc</span>:bc:5a:6d:e5:3d:98:e1:9c:28:38:58:75:c6:e3:</span><br><span class="line">                    27:5f:77:4b:10:b6:53:70:7b:25:fd:5c:44:28:67:</span><br><span class="line">                    54:51</span><br><span class="line">                Exponent: 65537 (0x10001)</span><br><span class="line">        X509v3 extensions:</span><br><span class="line">            X509v3 Key Usage: critical</span><br><span class="line">                Digital Signature, Key Encipherment</span><br><span class="line">            X509v3 Extended Key Usage:</span><br><span class="line">                TLS Web Server Authentication, TLS Web Client Authentication</span><br><span class="line">            X509v3 Basic Constraints: critical</span><br><span class="line">                CA:FALSE</span><br><span class="line">            X509v3 Subject Alternative Name:</span><br><span class="line">                URI:spiffe://cluster.local/ns/default/sa/default</span><br><span class="line">    Signature Algorithm: sha256WithRSAEncryption</span><br><span class="line">         68:fb:87:12:c6:d1:fb:c1:69:fa:ec:2e:30:ea:f7:4d:8f:9c:</span><br><span class="line">         5b:54:a1:f9:a3:5f:ff:83:3f:76:c5:d6:9c:2b:cb:55:6a:66:</span><br><span class="line">         49:b5:a2:bd:dd:71:06:7f:a4:f8:18:<span class="built_in">cd</span>:0d:7a:3f:bf:4c:56:</span><br><span class="line">         e0:35:5b:68:2d:71:72:e3:a2:7d:b9:90:f3:86:d0:1a:87:f6:</span><br><span class="line">         31:7e:24:db:00:a8:69:df:54:7f:8b:b0:1d:7d:02:03:c0:26:</span><br><span class="line">         1a:87:53:aa:e4:66:76:e9:80:1e:28:61:53:0c:53:c6:1e:80:</span><br><span class="line">         7e:b0:2d:71:75:1b:42:9f:51:f4:5c:7b:53:ee:06:02:31:5d:</span><br><span class="line">         71:2d:b5:4a:dd:58:25:a6:c4:24:ad:19:86:ac:24:87:99:ad:</span><br><span class="line">         6b:be:c8:ae:84:7e:7d:86:0a:1d:44:a0:50:62:2d:8b:d6:79:</span><br><span class="line">         ff:db:43:40:de:3b:ec:4e:2b:80:87:e5:1a:cb:1e:cf:e6:12:</span><br><span class="line">         8e:96:10:46:f7:fa:ed:1c:bb:0b:11:35:41:c8:69:43:64:79:</span><br><span class="line">         44:ea:a8:72:b7:27:2a:0d:a6:39:bb:34:b0:8b:e3:86:ba:3c:</span><br><span class="line">         1e:b9:ee:b5:61:bb:c8:65:b0:8d:bd:a1:9c:29:64:7d:0b:2c:</span><br><span class="line">         f9:9b:34:18:98:38:24:ad:85:b8:1e:59:41:09:1f:2e:a8:6d:</span><br><span class="line">         ef:ee:0d:a8</span><br></pre></td></tr></table></figure>
+<p>特别是，Subject Alternative Name 字段应为 <code>URI:spiffe://cluster.local/ns/default/sa/default</code>。 </p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="http://www.servicemesher.com/blog/istio-service-mesh-source-code-pilot-agent-deepin/" target="_blank" rel="noopener">istio源码分析之pilot-agent模块分析</a></li>
+</ol>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2019/02/06/istio-citadel/" title="istio" citadel="" 源码分析="">
+                    <div class="nextTitle">istio citadel 源码分析</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/" title="从百家争鸣的微服务生态到服务网格（译）">
+                    <div class="prevTitle">从百家争鸣的微服务生态到服务网格（译）</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2019/02/02/istio-pilot-agent/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "istio pilot-agent 源码分析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#整体架构"><span class="toc-number">1.</span> <span class="toc-text">整体架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#pilot-agent-命令行"><span class="toc-number">2.</span> <span class="toc-text">pilot-agent 命令行</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#pilot-agent-代码流程分析"><span class="toc-number">3.</span> <span class="toc-text">pilot-agent 代码流程分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#status-server"><span class="toc-number">3.1.</span> <span class="toc-text">status server</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#agent"><span class="toc-number">3.2.</span> <span class="toc-text">agent</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#watcher"><span class="toc-number">3.3.</span> <span class="toc-text">watcher</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">4.</span> <span class="toc-text">参考</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

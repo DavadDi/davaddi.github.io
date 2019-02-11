@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>gRPC 之 LoadBalancer · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">gRPC 之 LoadBalancer</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            gRPC 之 LoadBalancer
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="grpc">grpc</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/09/07</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>基于 Etcd 实现的服务注册和发现的 grpclb 参见： <a href="https://github.com/DavadDi/grpclb" target="_blank" rel="noopener">grpclb</a></p>
+<h2 id="前提"><a href="#前提" class="headerlink" title="前提"></a>前提</h2><p>gRPC 负载均衡是针对每次请求，而不是连接，这样可以保证服务端负载的均衡性。负载均衡器按照实现侧不同一般分为两种：</p>
+<h3 id="1-Proxy"><a href="#1-Proxy" class="headerlink" title="1. Proxy"></a>1. Proxy</h3><p><img src="https://grpc.io/img/image_0.png" alt=""></p>
+<h3 id="2-Client-Side"><a href="#2-Client-Side" class="headerlink" title="2. Client Side"></a>2. Client Side</h3><p>   <img src="https://grpc.io/img/image_1.png" alt=""></p>
+<h4 id="Thick-Client"><a href="#Thick-Client" class="headerlink" title="Thick Client"></a>Thick Client</h4><p>所有负载均衡算法实现都在客户端。</p>
+<h4 id="Lookaside-Load-Balancing"><a href="#Lookaside-Load-Balancing" class="headerlink" title="Lookaside Load Balancing"></a>Lookaside Load Balancing</h4><p>也称单臂路由。</p>
+<p><img src="https://grpc.io/img/image_2.png" alt=""></p>
+<h3 id="Etcd-Loadbanlacer-实现"><a href="#Etcd-Loadbanlacer-实现" class="headerlink" title="Etcd Loadbanlacer 实现"></a>Etcd Loadbanlacer 实现</h3><p>gPRC 当前最新版本为 <a href="https://github.com/grpc/grpc-go/releases/tag/v1.14.0" target="_blank" rel="noopener">Release 1.14.0</a>，由于 Etcd 不同版本的 Banlancer 实现方式不仅相同，可以参考：<a href="https://etcd.readthedocs.io/en/latest/client-architecture.html" target="_blank" rel="noopener">client-architecture</a>/ Etcd v3.4.0 (TBD 2018-09)。组合条件有以下几类算法：</p>
+<ul>
+<li><p>clientv3-grpc1.0</p>
+<ul>
+<li><p>客户端同时保留与服务端 Nodes 多个连接，在出现错误时候，可以快速重试其他的连接</p>
+</li>
+<li><p>limit： 保持多个连接浪费资源；对于 Nodes 的健康状态或者集群 Membership 关系未知，在某个 Node 出现问题时可能不能正常工作。</p>
+<p><img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-01.png" alt=""></p>
+</li>
+</ul>
+</li>
+<li><p>clientv3-grpc1.7  （可选者方案）</p>
+<ul>
+<li><p>与服务端中的某一个 Node 保持连接。当集群中有多个endpoints 时候，尝试连接到所有的 endpoints，一旦选中了一个连接（pinned address），关闭其他的连接，直至该连接被关闭。如果调用中间出现错误，则进入错误处理流程。</p>
+<p><img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-02.png" alt="client-architecture-balancer-figure-02"><br> <img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-03.png" alt="client-architecture-balancer-figure-03"><br> <img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-04.png" alt="client-architecture-balancer-figure-04"><br> <img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-05.png" alt="client-architecture-balancer-figure-05"><br> <img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-06.png" alt="client-architecture-balancer-figure-06"></p>
+</li>
+<li><p>限制：使用 HTTP/2 keepalives 来保持心跳，可能会出现脑裂的情况。</p>
+<p>  <img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-07.png" alt=""><br><img src="https://etcd.readthedocs.io/en/latest/_images/client-architecture-balancer-figure-08.png" alt=""></p>
+</li>
+</ul>
+</li>
+<li>clientv3-grpc1.14  （v3.4.0 开发中）</li>
+</ul>
+<h2 id="gRPC-1-14-LD-分析"><a href="#gRPC-1-14-LD-分析" class="headerlink" title="gRPC 1.14 LD 分析"></a>gRPC 1.14 LD 分析</h2><p><img src="https://github.com/grpc/proposal/raw/master/L9_graphics/bar_after.png" alt=""></p>
+<h3 id="dnsResolver"><a href="#dnsResolver" class="headerlink" title="dnsResolver"></a>dnsResolver</h3><p>注册 dnsResolver：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">init</span><span class="params">()</span></span> &#123;</span><br><span class="line">   resolver.Register(NewBuilder())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Resolver 的 Builder 接口。Builder 会创建一个用于监视名称解析更新的 resolver 。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Builder creates a resolver that will be used to watch name resolution updates.</span></span><br><span class="line"><span class="keyword">type</span> Builder <span class="keyword">interface</span> &#123;</span><br><span class="line">   <span class="comment">// Build creates a new resolver for the given target.</span></span><br><span class="line">   <span class="comment">//</span></span><br><span class="line">   <span class="comment">// gRPC dial calls Build synchronously, and fails if the returned error is</span></span><br><span class="line">   <span class="comment">// not nil.</span></span><br><span class="line">   Build(target Target, cc ClientConn, opts BuildOption) (Resolver, error)</span><br><span class="line">   <span class="comment">// Scheme returns the scheme supported by this resolver.</span></span><br><span class="line">   <span class="comment">// Scheme is defined at https://github.com/grpc/grpc/blob/master/doc/naming.md.</span></span><br><span class="line">   Scheme() <span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Resover 的接口定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Resolver watches for the updates on the specified target.</span></span><br><span class="line"><span class="comment">// Updates include address updates and service config updates.</span></span><br><span class="line"><span class="keyword">type</span> Resolver <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// ResolveNow will be called by gRPC to try to resolve the target name</span></span><br><span class="line">	<span class="comment">// again. It's just a hint, resolver can ignore this if it's not necessary.</span></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	<span class="comment">// It could be called multiple times concurrently.</span></span><br><span class="line">	ResolveNow(ResolveNowOption)</span><br><span class="line">	<span class="comment">// Close closes the resolver.</span></span><br><span class="line">	Close()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>代码分析，首先 <code>NewBuilder</code> 作为一个工厂来创建一个 <code>resolver.Builder</code>，供 gRPC 程序来进行调用：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewBuilder creates a dnsBuilder which is used to factory DNS resolvers.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewBuilder</span><span class="params">()</span> <span class="title">resolver</span>.<span class="title">Builder</span></span> &#123;</span><br><span class="line">   <span class="keyword">return</span> &amp;dnsBuilder&#123;minFreq: defaultFreq&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>dnsResolver 结构定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// dnsResolver watches for the name resolution update for a non-IP target.</span></span><br><span class="line"><span class="keyword">type</span> dnsResolver <span class="keyword">struct</span> &#123;</span><br><span class="line">	freq       time.Duration</span><br><span class="line">	backoff    backoff.Exponential</span><br><span class="line">	retryCount <span class="keyword">int</span></span><br><span class="line">	host       <span class="keyword">string</span></span><br><span class="line">	port       <span class="keyword">string</span></span><br><span class="line">	ctx        context.Context</span><br><span class="line">	cancel     context.CancelFunc</span><br><span class="line">	cc         resolver.ClientConn</span><br><span class="line">    <span class="comment">// rn 是一个 channel， 用于 ResolveNow() 调用的时候强制进行解析</span></span><br><span class="line">	<span class="comment">// rn channel is used by ResolveNow() to force an immediate resolution of the target.</span></span><br><span class="line">	rn <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">	t  *time.Timer</span><br><span class="line">    <span class="comment">// wg 用于等待 watcher 的 goroutine 结束，否则可能导致 data race</span></span><br><span class="line">	<span class="comment">// wg is used to enforce Close() to return after the watcher() goroutine has finished.</span></span><br><span class="line">	<span class="comment">// Otherwise, data race will be possible. [Race Example] in dns_resolver_test we</span></span><br><span class="line">	<span class="comment">// replace the real lookup functions with mocked ones to facilitate testing.</span></span><br><span class="line">	<span class="comment">// If Close() doesn't wait for watcher() goroutine finishes, race detector sometimes</span></span><br><span class="line">	<span class="comment">// will warns lookup (READ the lookup function pointers) inside watcher() goroutine</span></span><br><span class="line">	<span class="comment">// has data race with replaceNetFunc (WRITE the lookup function pointers).</span></span><br><span class="line">	wg                   sync.WaitGroup</span><br><span class="line">	disableServiceConfig <span class="keyword">bool</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Build 创建并启动一个 DNS 解析器，用于监视目标的名称解析。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Build creates and starts a DNS resolver that watches the name resolution of the target.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(b *dnsBuilder)</span> <span class="title">Build</span><span class="params">(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOption)</span> <span class="params">(resolver.Resolver, error)</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">	host, port, err := parseTarget(target.Endpoint)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// IP address.</span></span><br><span class="line">	<span class="comment">// 省略分析 ...</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// DNS address (non-IP).</span></span><br><span class="line">    <span class="comment">// 创建一个用于跟踪的 ctx 和 cancel </span></span><br><span class="line">	ctx, cancel := context.WithCancel(context.Background())</span><br><span class="line">	d := &amp;dnsResolver&#123;</span><br><span class="line">		freq:                 b.minFreq,</span><br><span class="line">		backoff:              backoff.Exponential&#123;MaxDelay: b.minFreq&#125;,</span><br><span class="line">		host:                 host,</span><br><span class="line">		port:                 port,</span><br><span class="line">		ctx:                  ctx,</span><br><span class="line">		cancel:               cancel,</span><br><span class="line">		cc:                   cc,</span><br><span class="line">		t:                    time.NewTimer(<span class="number">0</span>),</span><br><span class="line">		rn:                   <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;, <span class="number">1</span>),</span><br><span class="line">		disableServiceConfig: opts.DisableServiceConfig,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	d.wg.Add(<span class="number">1</span>)</span><br><span class="line">	<span class="keyword">go</span> d.watcher()  <span class="comment">// 启动 watcher 进行监听</span></span><br><span class="line">	<span class="keyword">return</span> d, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>传入参数 <code>cc resolver.ClientConn</code>，ClientConn 包含 <code>resolver</code> 的回调，以通知 <code>gRPC</code> <code>ClientConn</code> 的任何更新。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ClientConn contains the callbacks for resolver to notify any updates</span></span><br><span class="line"><span class="comment">// to the gRPC ClientConn.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// This interface is to be implemented by gRPC. Users should not need a</span></span><br><span class="line"><span class="comment">// brand new implementation of this interface. For the situations like</span></span><br><span class="line"><span class="comment">// testing, the new implementation should embed this interface. This allows</span></span><br><span class="line"><span class="comment">// gRPC to add new methods to this interface.</span></span><br><span class="line"><span class="keyword">type</span> ClientConn <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// NewAddress is called by resolver to notify ClientConn a new list</span></span><br><span class="line">	<span class="comment">// of resolved addresses.</span></span><br><span class="line">	<span class="comment">// The address list should be the complete list of resolved addresses.</span></span><br><span class="line">	NewAddress(addresses []Address)</span><br><span class="line">	<span class="comment">// NewServiceConfig is called by resolver to notify ClientConn a new</span></span><br><span class="line">	<span class="comment">// service config. The service config should be provided as a json string.</span></span><br><span class="line">	NewServiceConfig(serviceConfig <span class="keyword">string</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>watcher</code> 函数的实现如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(d *dnsResolver)</span> <span class="title">watcher</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="keyword">defer</span> d.wg.Done()</span><br><span class="line">    <span class="comment">// 设置一个 watcher 死循环，一直在监听</span></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> &lt;-d.ctx.Done(): <span class="comment">// 如果被取消，通过 ctx，则直接结束 for 循环</span></span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		<span class="keyword">case</span> &lt;-d.t.C:		 <span class="comment">// 定时器触发，第一次为0，所以直接通过</span></span><br><span class="line">		<span class="keyword">case</span> &lt;-d.rn:		 <span class="comment">// rn 是一个 channel， 用于 ResolveNow() 调用的时候强制进行解析</span></span><br><span class="line">                             <span class="comment">// ResolveNow 的时候操作  ase d.rn &lt;- struct&#123;&#125;&#123;&#125;:</span></span><br><span class="line">		&#125;</span><br><span class="line">        <span class="comment">// 开始异步进行解析</span></span><br><span class="line">		result, sc := d.lookup()</span><br><span class="line">		<span class="comment">// Next lookup should happen within an interval defined by d.freq. It may be</span></span><br><span class="line">		<span class="comment">// more often due to exponential retry on empty address list.</span></span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">len</span>(result) == <span class="number">0</span> &#123;</span><br><span class="line">			d.retryCount++</span><br><span class="line">			d.t.Reset(d.backoff.Backoff(d.retryCount))</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			d.retryCount = <span class="number">0</span></span><br><span class="line">			d.t.Reset(d.freq)</span><br><span class="line">		&#125;</span><br><span class="line">		d.cc.NewServiceConfig(sc)   <span class="comment">// 回调进行通知</span></span><br><span class="line">		d.cc.NewAddress(result)     <span class="comment">// 回调进行通知</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过 Close 函数的调用来达到停止 watcher 的效果：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Close closes the dnsResolver.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(d *dnsResolver)</span> <span class="title">Close</span><span class="params">()</span></span> &#123;</span><br><span class="line">	d.cancel()</span><br><span class="line">	d.wg.Wait()</span><br><span class="line">	d.t.Stop()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="RR-Balancer"><a href="#RR-Balancer" class="headerlink" title="RR Balancer"></a>RR Balancer</h3><p><img src="https://github.com/grpc/proposal/raw/master/L9_graphics/bar_after.png" alt=""></p>
+<p>Banlancer Builder 接口定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Builder creates a balancer.</span></span><br><span class="line"><span class="keyword">type</span> Builder <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Build creates a new balancer with the ClientConn.</span></span><br><span class="line">	Build(cc ClientConn, opts BuildOptions) Balancer</span><br><span class="line">	<span class="comment">// Name returns the name of balancers built by this builder.</span></span><br><span class="line">	<span class="comment">// It will be used to pick balancers (for example in service config).</span></span><br><span class="line">	Name() <span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Banlancer 接口定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Balancer takes input from gRPC, manages SubConns, and collects and aggregates</span></span><br><span class="line"><span class="comment">// the connectivity states.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// It also generates and updates the Picker used by gRPC to pick SubConns for RPCs.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// HandleSubConnectionStateChange, HandleResolvedAddrs and Close are guaranteed</span></span><br><span class="line"><span class="comment">// to be called synchronously from the same goroutine.</span></span><br><span class="line"><span class="comment">// There's no guarantee on picker.Pick, it may be called anytime.</span></span><br><span class="line"><span class="keyword">type</span> Balancer <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// HandleSubConnStateChange is called by gRPC when the connectivity state</span></span><br><span class="line">	<span class="comment">// of sc has changed.</span></span><br><span class="line">	<span class="comment">// Balancer is expected to aggregate all the state of SubConn and report</span></span><br><span class="line">	<span class="comment">// that back to gRPC.</span></span><br><span class="line">	<span class="comment">// Balancer should also generate and update Pickers when its internal state has</span></span><br><span class="line">	<span class="comment">// been changed by the new state.</span></span><br><span class="line">	HandleSubConnStateChange(sc SubConn, state connectivity.State)</span><br><span class="line">	<span class="comment">// HandleResolvedAddrs is called by gRPC to send updated resolved addresses to</span></span><br><span class="line">	<span class="comment">// balancers.</span></span><br><span class="line">	<span class="comment">// Balancer can create new SubConn or remove SubConn with the addresses.</span></span><br><span class="line">	<span class="comment">// An empty address slice and a non-nil error will be passed if the resolver returns</span></span><br><span class="line">	<span class="comment">// non-nil error to gRPC.</span></span><br><span class="line">	HandleResolvedAddrs([]resolver.Address, error)</span><br><span class="line">	<span class="comment">// Close closes the balancer. The balancer is not required to call</span></span><br><span class="line">	<span class="comment">// ClientConn.RemoveSubConn for its existing SubConns.</span></span><br><span class="line">	Close()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>banlancer/base 中实现了大多数 banlancer 功能，不同选择算法的实现，基于 base 实现 pickBuilder 与 picker 接口即可。</p>
+<p><code>base.NewBalancerBuilder</code> 函数定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Base 实现的函数</span></span><br><span class="line"><span class="comment">// NewBalancerBuilder returns a balancer builder. The balancers</span></span><br><span class="line"><span class="comment">// built by this builder will use the picker builder to build pickers.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewBalancerBuilder</span><span class="params">(name <span class="keyword">string</span>, pb PickerBuilder)</span> <span class="title">balancer</span>.<span class="title">Builder</span></span> &#123;</span><br><span class="line">   <span class="keyword">return</span> &amp;baseBuilder&#123;</span><br><span class="line">      name:          name,</span><br><span class="line">      pickerBuilder: pb,</span><br><span class="line">   &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>RR Banlancer 的实现基于 balancer/base 基础实现，核心功能主体在 balancer/base 中实现，而 RR Banlancer 基于 <code>base.NewBalancerBuilder</code> 实现了 balancer.Builder 接口，可以用于注册。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Name is the name of round_robin balancer.</span></span><br><span class="line"><span class="keyword">const</span> Name = <span class="string">"round_robin"</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// newBuilder creates a new roundrobin balancer builder.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">newBuilder</span><span class="params">()</span> <span class="title">balancer</span>.<span class="title">Builder</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> base.NewBalancerBuilder(Name, &amp;rrPickerBuilder&#123;&#125;)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">init</span><span class="params">()</span></span> &#123;</span><br><span class="line">	balancer.Register(newBuilder())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>PickerBuilder 接口定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// PickerBuilder creates balancer.Picker.</span></span><br><span class="line"><span class="keyword">type</span> PickerBuilder <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Build takes a slice of ready SubConns, and returns a picker that will be</span></span><br><span class="line">	<span class="comment">// used by gRPC to pick a SubConn.</span></span><br><span class="line">	Build(readySCs <span class="keyword">map</span>[resolver.Address]balancer.SubConn) balancer.Picker</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>RoundRobin Banlancer Builder 实现了  <code>PickerBuilder</code> 的接口：<br><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(*rrPickerBuilder)</span> <span class="title">Build</span><span class="params">(readySCs <span class="keyword">map</span>[resolver.Address]balancer.SubConn)</span> <span class="title">balancer</span>.<span class="title">Picker</span></span> &#123;</span><br><span class="line">	grpclog.Infof(<span class="string">"roundrobinPicker: newPicker called with readySCs: %v"</span>, readySCs)</span><br><span class="line">    <span class="comment">// 将 map 接口转化成 slice[] 结构，并使用期构造 rrPicker 并返回</span></span><br><span class="line">	<span class="keyword">var</span> scs []balancer.SubConn</span><br><span class="line">	<span class="keyword">for</span> _, sc := <span class="keyword">range</span> readySCs &#123;</span><br><span class="line">		scs = <span class="built_in">append</span>(scs, sc)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> &amp;rrPicker&#123;</span><br><span class="line">		subConns: scs,</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>banlancer.Picker 由 rrPicker 来实现：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> rrPicker <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// subConns is the snapshot of the roundrobin balancer when this picker was</span></span><br><span class="line">	<span class="comment">// created. The slice is immutable. Each Get() will do a round robin</span></span><br><span class="line">	<span class="comment">// selection from it and return the selected SubConn.</span></span><br><span class="line">	subConns []balancer.SubConn</span><br><span class="line"></span><br><span class="line">	mu   sync.Mutex</span><br><span class="line">    <span class="comment">// 用于记录下一个位移量</span></span><br><span class="line">	next <span class="keyword">int</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *rrPicker)</span> <span class="title">Pick</span><span class="params">(ctx context.Context, opts balancer.PickOptions)</span> <span class="params">(balancer.SubConn, <span class="keyword">func</span>(balancer.DoneInfo)</span>, <span class="title">error</span>)</span> &#123;</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(p.subConns) &lt;= <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">nil</span>, balancer.ErrNoSubConnAvailable</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	p.mu.Lock()</span><br><span class="line">	sc := p.subConns[p.next]</span><br><span class="line">	p.next = (p.next + <span class="number">1</span>) % <span class="built_in">len</span>(p.subConns)</span><br><span class="line">	p.mu.Unlock()</span><br><span class="line">	<span class="keyword">return</span> sc, <span class="literal">nil</span>, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="Etcd-服务注册与发现"><a href="#Etcd-服务注册与发现" class="headerlink" title="Etcd 服务注册与发现"></a>Etcd 服务注册与发现</h2><p><em>clientv3-grpc1.14</em>: Official client implementation, with <a href="https://github.com/grpc/grpc-go/releases/tag/v1.14.0" target="_blank" rel="noopener">grpc-go v1.14.x</a>, which is used in latest etcd v3.4.</p>
+<p>etcdv3Client  -&gt; autoSync()  -&gt; Sync() -&gt; c.SetEndpoints(eps…)  -&gt; gc.resolverGroup.SetEndpoints(eps) -&gt; EveryResover  -&gt; ClientConn update</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://grpc.io/blog/loadbalancing" target="_blank" rel="noopener">gRPC Load Balancing</a></li>
+<li><a href="https://github.com/grpc/grpc/blob/master/doc/load-balancing.md" target="_blank" rel="noopener">Load Balancing in gRPC</a></li>
+<li><a href="https://segmentfault.com/a/1190000008672912" target="_blank" rel="noopener">gRPC服务发现&amp;负载均衡</a></li>
+<li><a href="https://segmentfault.com/a/1190000010471761" target="_blank" rel="noopener">go语言gRPC负载均衡库grpc-lb的使用</a></li>
+<li><a href="https://github.com/bsm/grpcl" target="_blank" rel="noopener">bsm/grpclb</a> <a href="https://github.com/bsm/grpclb" target="_blank" rel="noopener">External Load Balancing Service solution for gRPC written in Go</a></li>
+<li><a href="https://medium.com/@shijuvar/writing-grpc-interceptors-in-go-bf3e7671fe48" target="_blank" rel="noopener">Writing gRPC Interceptors in Go</a></li>
+<li><a href="https://github.com/grpc/proposal/blob/master/L9-go-resolver-balancer-API.md" target="_blank" rel="noopener"><a href="https://github.com/grpc/proposal" target="_blank" rel="noopener">proposal</a>/<strong>L9-go-resolver-balancer-API.md</strong></a></li>
+<li><a href="https://github.com/DavadDi/wonaming" target="_blank" rel="noopener">https://github.com/DavadDi/wonaming</a></li>
+<li><a href="http://ralphbupt.github.io/2017/11/27/etcd%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/" target="_blank" rel="noopener">etcd学习笔记（etcdv3， gRPC服务发现和负载均衡）</a></li>
+<li><a href="https://www.cnblogs.com/sevenPP/p/8149890.html" target="_blank" rel="noopener">etcd v3 服务注册与发现 Go代码</a></li>
+<li><a href="https://godoc.org/github.com/coreos/etcd/clientv3/namespace" target="_blank" rel="noopener">https://godoc.org/github.com/coreos/etcd/clientv3/namespace</a>  自动使用前缀</li>
+<li><a href="http://chen-tao.github.io/2017/09/14/Use-gvm-manage-golang-version/" target="_blank" rel="noopener">使用gvm管理多版本golang</a>  gvm 管理多个 golang 环境，类似于 python virtural env 方式</li>
+</ol>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/09/13/Prometheus-Discovery-K8S/" title="Prometheus" discovery="" 之="" k8s="" 代码分析="">
+                    <div class="nextTitle">Prometheus Discovery 之 K8S 代码分析</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/09/01/grpc-interceptors/" title="gRPC" 之="" interceptors="">
+                    <div class="prevTitle">gRPC 之 Interceptors</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/09/07/grpc-loadbanlancer/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "gRPC 之 LoadBalancer"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#前提"><span class="toc-number">1.</span> <span class="toc-text">前提</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-Proxy"><span class="toc-number">1.1.</span> <span class="toc-text">1. Proxy</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-Client-Side"><span class="toc-number">1.2.</span> <span class="toc-text">2. Client Side</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Thick-Client"><span class="toc-number">1.2.1.</span> <span class="toc-text">Thick Client</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Lookaside-Load-Balancing"><span class="toc-number">1.2.2.</span> <span class="toc-text">Lookaside Load Balancing</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Etcd-Loadbanlacer-实现"><span class="toc-number">1.3.</span> <span class="toc-text">Etcd Loadbanlacer 实现</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#gRPC-1-14-LD-分析"><span class="toc-number">2.</span> <span class="toc-text">gRPC 1.14 LD 分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#dnsResolver"><span class="toc-number">2.1.</span> <span class="toc-text">dnsResolver</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RR-Balancer"><span class="toc-number">2.2.</span> <span class="toc-text">RR Balancer</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Etcd-服务注册与发现"><span class="toc-number">3.</span> <span class="toc-text">Etcd 服务注册与发现</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">4.</span> <span class="toc-text">参考</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>使用 client-go 开发 controller · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">使用 client-go 开发 controller</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            使用 client-go 开发 controller
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="client-go">client-go</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="controller">controller</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/03/28</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <h1 id="使用-client-go-开发-controller"><a href="#使用-client-go-开发-controller" class="headerlink" title="使用 client-go 开发 controller"></a>使用 client-go 开发 controller</h1><h2 id="client-go-介绍"><a href="#client-go-介绍" class="headerlink" title="client-go 介绍"></a>client-go 介绍</h2><p>github地址：<a href="https://github.com/kubernetes/client-go/" target="_blank" rel="noopener">https://github.com/kubernetes/client-go/</a> </p>
+<p>client-go 是 Kubernets 官方提供的 go 语言客户端库，Kubernets 内部也使用该库进行通信，此外诸多基于 Kubernets 的第三方开发也使用该库，比如 <a href="https://github.com/coreos/etcd-operator" target="_blank" rel="noopener">etcd-operator</a> 或者 <a href="https://github.com/coreos/prometheus-operator" target="_blank" rel="noopener">prometheus-operator</a>等。</p>
+<p>client-go 当前版本是 6.0，支持到 Kubernets 1.9 版本。6.0 版本的变化情况可以参见官方blog 的文章<a href="http://blog.kubernetes.io/2018/01/introducing-client-go-version-6.html" target="_blank" rel="noopener">Introducing client-go version 6</a>，版本管理遵循 <a href="https://semver.org/lang/zh-CN/" target="_blank" rel="noopener">语义化版本 2.0.0</a></p>
+<p>库的整体目录：</p>
+<ul>
+<li>The <code>kubernetes</code> package contains the clientset to access Kubernetes API.</li>
+<li>The <code>discovery</code> package is used to discover APIs supported by a Kubernetes API server.</li>
+<li>The <code>dynamic</code> package contains a dynamic client that can perform generic operations on arbitrary Kubernetes API objects.</li>
+<li>The <code>transport</code> package is used to set up auth and start a connection.</li>
+<li>The <code>tools/cache</code> package is useful for writing controllers.</li>
+</ul>
+<h4 id="Compatibility-matrix"><a href="#Compatibility-matrix" class="headerlink" title="Compatibility matrix"></a>Compatibility matrix</h4><table>
+<thead>
+<tr>
+<th></th>
+<th>Kubernetes 1.4</th>
+<th>Kubernetes 1.5</th>
+<th>Kubernetes 1.6</th>
+<th>Kubernetes 1.7</th>
+<th>Kubernetes 1.8</th>
+<th>Kubernetes 1.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>client-go 1.4</td>
+<td>✓</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>client-go 1.5</td>
+<td>+</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>client-go 2.0</td>
+<td>+-</td>
+<td>✓</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+</tr>
+<tr>
+<td>client-go 3.0</td>
+<td>+-</td>
+<td>+-</td>
+<td>✓</td>
+<td>-</td>
+<td>+-</td>
+<td>+-</td>
+</tr>
+<tr>
+<td>client-go 4.0</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>✓</td>
+<td>+-</td>
+<td>+-</td>
+</tr>
+<tr>
+<td>client-go 5.0</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>✓</td>
+<td>+-</td>
+</tr>
+<tr>
+<td>client-go 6.0</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>client-go HEAD</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+-</td>
+<td>+</td>
+</tr>
+</tbody>
+</table>
+<p>Key:</p>
+<ul>
+<li><code>✓</code> Exactly the same features / API objects in both client-go and the Kubernetes version.</li>
+<li><code>+</code> client-go has features or API objects that may not be present in the Kubernetes cluster, either due to that client-go has additional new API, or that the server has removed old API. However, everything they have in common (i.e., most APIs) will work. Please note that alpha APIs may vanish or change significantly in a single release.</li>
+<li><code>-</code> The Kubernetes cluster has features the client-go library can’t use, either due to the server has additional new API, or that client-go has removed old API. However, everything they share in common (i.e., most APIs) will work.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>client-go 3.0</th>
+<th>Kubernetes main repo, 1.6 branch</th>
+<th>= -</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>client-go 4.0</td>
+<td>Kubernetes main repo, 1.7 branch</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>client-go 5.0</td>
+<td>Kubernetes main repo, 1.8 branch</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>client-go 6.0</td>
+<td>Kubernetes main repo, 1.9 branch</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>client-go HEAD</td>
+<td>Kubernetes main repo, master branch</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+<p>Key:</p>
+<ul>
+<li><code>✓</code> Changes in main Kubernetes repo are actively published to client-go by a bot</li>
+<li><code>=</code> Maintenance is manual, only severe security bugs will be patched.</li>
+<li><code>-</code> Deprecated; please upgrade.</li>
+</ul>
+<p>推荐使用 glide进行管理：</p>
+<p>先编写一个简单样例程序，如官方提供的在<a href="https://github.com/kubernetes/client-go/blob/release-6.0/examples/out-of-cluster-client-configuration/main.go" target="_blank" rel="noopener">集群外访问集群内部pod程序</a>:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ glide init</span><br><span class="line"><span class="comment"># 根据提示完成输入</span></span><br></pre></td></tr></table></figure>
+<p>最后生成的样例如下：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">package:</span> <span class="string">github.com/DavadDi/k8s-client-go/out-of-cluster-client-configuration</span></span><br><span class="line"><span class="attr">import:</span></span><br><span class="line"><span class="attr">- package:</span> <span class="string">k8s.io/apimachinery</span></span><br><span class="line"><span class="attr">  subpackages:</span></span><br><span class="line"><span class="bullet">  -</span> <span class="string">pkg/api/errors</span></span><br><span class="line"><span class="bullet">  -</span> <span class="string">pkg/apis/meta/v1</span></span><br><span class="line"><span class="attr">- package:</span> <span class="string">k8s.io/client-go</span></span><br><span class="line"><span class="attr">  version:</span> <span class="string">^6.0.0</span></span><br><span class="line"><span class="attr">  subpackages:</span></span><br><span class="line"><span class="bullet">  -</span> <span class="string">kubernetes</span></span><br><span class="line"><span class="bullet">  -</span> <span class="string">tools/clientcmd</span></span><br></pre></td></tr></table></figure>
+<p>更多的方式可以参见 <a href="https://github.com/kubernetes/client-go/blob/master/INSTALL.md" target="_blank" rel="noopener">INSTALL</a></p>
+<p>如果在集群内部作为 Pod 使用样例参考：<a href="https://github.com/kubernetes/client-go/tree/master/examples/in-cluster-client-configuration" target="_blank" rel="noopener"><strong>in-cluster-client-configuration</strong></a> ，如果运行在集群外部 <a href="https://github.com/kubernetes/client-go/tree/master/examples/out-of-cluster-client-configuration" target="_blank" rel="noopener"><strong>out-of-cluster-client-configuration</strong></a></p>
+<h2 id="Visit-k8s-Cluster-Resource"><a href="#Visit-k8s-Cluster-Resource" class="headerlink" title="Visit k8s Cluster Resource"></a>Visit k8s Cluster Resource</h2><p>样例代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">"flag"</span></span><br><span class="line">	<span class="string">"os"</span></span><br><span class="line">	<span class="string">"path/filepath"</span></span><br><span class="line">	<span class="string">"time"</span></span><br><span class="line">	<span class="string">"encoding/json"</span></span><br><span class="line">	<span class="string">"log"</span></span><br><span class="line">	<span class="string">"k8s.io/api/core/v1"</span></span><br><span class="line">	<span class="string">"k8s.io/apimachinery/pkg/api/errors"</span></span><br><span class="line">	metav1 <span class="string">"k8s.io/apimachinery/pkg/apis/meta/v1"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/kubernetes"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/tools/clientcmd"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> kubeconfig *<span class="keyword">string</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	log.Println(*kubeconfig)</span><br><span class="line">	clientSet, err := creatClient(<span class="string">""</span>, *kubeconfig)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Println(<span class="string">"Create Kubernetes client failed"</span>, err)</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Do List and Find work</span></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="comment">// pods, err := clientSet.CoreV1().Pods(v1.NamespaceDefault).List(metav1.ListOptions&#123;&#125;)</span></span><br><span class="line">		<span class="comment">// curl -v http://127.0.0.1:8001/api/v1/namespaces/soa/pods/authhttp-57d998968d-hn5zb</span></span><br><span class="line">		pods, err := clientSet.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions&#123;&#125;)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Printf(<span class="string">"ListPod faield for %s, error: %s\n"</span>, v1.NamespaceAll, err)</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		printPods(pods.Items)</span><br><span class="line"></span><br><span class="line">		pod, err := clientSet.CoreV1().Pods(v1.NamespaceDefault).Get(<span class="string">"hello-4h7wt"</span>, metav1.GetOptions&#123;&#125;)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			handleError(err)</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			data, _ := json.MarshalIndent(pod, <span class="string">""</span>, <span class="string">" "</span>)</span><br><span class="line">			log.Printf(<span class="string">"Found pod %s\n"</span>, <span class="keyword">string</span>(data))</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		time.Sleep(<span class="number">10</span> * time.Second)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ....</span></span><br></pre></td></tr></table></figure>
+<p>TODO: 完整代码样例</p>
+<h2 id="Visit-List-Watch-k8s-Cluster-Resource"><a href="#Visit-List-Watch-k8s-Cluster-Resource" class="headerlink" title="Visit List/Watch k8s Cluster Resource"></a>Visit List/Watch k8s Cluster Resource</h2><p>对于 Kubernets· 中 Pod、Endpoints、Service、Namespace的 ListWatcher 的使用，可以参见 Kubernets DNS相关的实现细节 <a href="https://github.com/kubernetes/dns/tree/master/cmd/kube-dns" target="_blank" rel="noopener">kube-dns</a> 中 <a href="https://github.com/kubernetes/dns/blob/master/pkg/dns/dns.go" target="_blank" rel="noopener">pkg/dns/dns.go</a> , <a href="https://github.com/coredns/coredns/tree/master/plugin/kubernetes" target="_blank" rel="noopener">coreDNS k8s plugin</a>。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">"flag"</span></span><br><span class="line">	<span class="string">"fmt"</span></span><br><span class="line">	<span class="string">"time"</span></span><br><span class="line"></span><br><span class="line">	<span class="string">"github.com/golang/glog"</span></span><br><span class="line"></span><br><span class="line">	<span class="string">"encoding/json"</span></span><br><span class="line"></span><br><span class="line">	<span class="string">"k8s.io/api/core/v1"</span></span><br><span class="line">	<span class="string">"k8s.io/apimachinery/pkg/fields"</span></span><br><span class="line">	<span class="string">"k8s.io/apimachinery/pkg/util/runtime"</span></span><br><span class="line">	<span class="string">"k8s.io/apimachinery/pkg/util/wait"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/kubernetes"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/tools/cache"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/tools/clientcmd"</span></span><br><span class="line">	<span class="string">"k8s.io/client-go/util/workqueue"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> Controller <span class="keyword">struct</span> &#123;</span><br><span class="line">	indexer  cache.Indexer</span><br><span class="line">	queue    workqueue.RateLimitingInterface</span><br><span class="line">	informer cache.Controller</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> QueueItem <span class="keyword">struct</span> &#123;</span><br><span class="line">	Key    <span class="keyword">string</span></span><br><span class="line">	Type   cache.DeltaType</span><br><span class="line">	Object <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewController</span><span class="params">(queue workqueue.RateLimitingInterface, indexer cache.Indexer, informer cache.Controller)</span> *<span class="title">Controller</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> &amp;Controller&#123;</span><br><span class="line">		informer: informer,</span><br><span class="line">		indexer:  indexer,</span><br><span class="line">		queue:    queue,</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Controller)</span> <span class="title">processNextItem</span><span class="params">()</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">	<span class="comment">// Wait until there is a new item in the working queue</span></span><br><span class="line">	item, quit := c.queue.Get()</span><br><span class="line">	<span class="keyword">if</span> quit &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Tell the queue that we are done with processing this key. This unblocks the key for other workers</span></span><br><span class="line">	<span class="comment">// This allows safe parallel processing because two endpoints with the same key are never processed in</span></span><br><span class="line">	<span class="comment">// parallel.</span></span><br><span class="line">	<span class="keyword">defer</span> c.queue.Done(item)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Invoke the method containing the business logic</span></span><br><span class="line">	err := c.syncToStdout(item.(QueueItem))</span><br><span class="line">	<span class="comment">// Handle the error if something went wrong during the execution of the business logic</span></span><br><span class="line">	c.handleErr(err, item)</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// syncToStdout is the business logic of the controller. In this controller it simply prints</span></span><br><span class="line"><span class="comment">// information about the endpoints to stdout. In case an error happened, it has to simply return the error.</span></span><br><span class="line"><span class="comment">// The retry logic should not be part of the business logic.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Controller)</span> <span class="title">syncToStdout</span><span class="params">(item QueueItem)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	obj, exists, err := c.indexer.GetByKey(item.Key)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		glog.Errorf(<span class="string">"Fetching object with key %s from store failed with %v"</span>, item.Key, err)</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> !exists &#123;</span><br><span class="line">		<span class="comment">// Below we will warm up our cache with a endpoints, so that we will see a delete for one endpoints</span></span><br><span class="line">		endpoints, ok := item.Object.(*v1.Endpoints)</span><br><span class="line">		<span class="keyword">if</span> !ok &#123;</span><br><span class="line">			fmt.Printf(<span class="string">"Key %s [%s]\n"</span>, item.Key, item.Type)</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			data, _ := json.MarshalIndent(item.Object, <span class="string">""</span>, <span class="string">" "</span>)</span><br><span class="line">			fmt.Printf(<span class="string">"Endpoints %s [%s] key %s obj [%s]\n"</span>, endpoints.GetName(), item.Type, item.Key, <span class="keyword">string</span>(data))</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">// Note that you also have to check the uid if you have a local controlled resource, which</span></span><br><span class="line">		<span class="comment">// is dependent on the actual instance, to detect that a endpoints was recreated with the same name</span></span><br><span class="line">		endpoints := obj.(*v1.Endpoints)</span><br><span class="line">		fmt.Printf(<span class="string">"Endpoints %s [%s]\n"</span>,</span><br><span class="line">			endpoints.GetName(), item.Type)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// handleErr checks if an error happened and makes sure we will retry later.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Controller)</span> <span class="title">handleErr</span><span class="params">(err error, key <span class="keyword">interface</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// Forget about the #AddRateLimited history of the key on every successful synchronization.</span></span><br><span class="line">		<span class="comment">// This ensures that future processing of updates for this key is not delayed because of</span></span><br><span class="line">		<span class="comment">// an outdated error history.</span></span><br><span class="line">		c.queue.Forget(key)</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// This controller retries 5 times if something goes wrong. After that, it stops trying.</span></span><br><span class="line">	<span class="keyword">if</span> c.queue.NumRequeues(key) &lt; <span class="number">5</span> &#123;</span><br><span class="line">		glog.Infof(<span class="string">"Error syncing endpoints %v: %v"</span>, key, err)</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Re-enqueue the key rate limited. Based on the rate limiter on the</span></span><br><span class="line">		<span class="comment">// queue and the re-enqueue history, the key will be processed later again.</span></span><br><span class="line">		c.queue.AddRateLimited(key)</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	c.queue.Forget(key)</span><br><span class="line">	<span class="comment">// Report to an external entity that, even after several retries, we could not successfully process this key</span></span><br><span class="line">	runtime.HandleError(err)</span><br><span class="line">	glog.Infof(<span class="string">"Dropping endpoints %q out of the queue: %v"</span>, key, err)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Controller)</span> <span class="title">Run</span><span class="params">(threadiness <span class="keyword">int</span>, stopCh <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">	<span class="keyword">defer</span> runtime.HandleCrash()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Let the workers stop when we are done</span></span><br><span class="line">	<span class="keyword">defer</span> c.queue.ShutDown()</span><br><span class="line">	glog.Info(<span class="string">"Starting endpoints controller"</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">go</span> c.informer.Run(stopCh)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Wait for all involved caches to be synced, before processing items from the queue is started</span></span><br><span class="line">	<span class="keyword">if</span> !cache.WaitForCacheSync(stopCh, c.informer.HasSynced) &#123;</span><br><span class="line">		runtime.HandleError(fmt.Errorf(<span class="string">"Timed out waiting for caches to sync"</span>))</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt; threadiness; i++ &#123;</span><br><span class="line">		<span class="comment">// 执行完 c.runWorker 后，每隔1秒继续执行，直到 stopCh 被关闭</span></span><br><span class="line">		<span class="keyword">go</span> wait.Until(c.runWorker, time.Second, stopCh)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	&lt;-stopCh</span><br><span class="line">	glog.Info(<span class="string">"Stopping endpoints controller"</span>)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Controller)</span> <span class="title">runWorker</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="keyword">for</span> c.processNextItem() &#123;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="keyword">var</span> kubeconfig <span class="keyword">string</span></span><br><span class="line">	<span class="keyword">var</span> master <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	flag.StringVar(&amp;kubeconfig, <span class="string">"kubeconfig"</span>, <span class="string">""</span>, <span class="string">"absolute path to the kubeconfig file"</span>)</span><br><span class="line">	flag.StringVar(&amp;master, <span class="string">"master"</span>, <span class="string">""</span>, <span class="string">"master url"</span>)</span><br><span class="line">	flag.Parse()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// creates the connection</span></span><br><span class="line">	config, err := clientcmd.BuildConfigFromFlags(master, kubeconfig)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		glog.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// creates the clientset</span></span><br><span class="line">	clientset, err := kubernetes.NewForConfig(config)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		glog.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// create the endpoints watcher</span></span><br><span class="line">	endpointsListWatcher := cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(), <span class="string">"endpoints"</span>, <span class="string">"soa"</span>, fields.Everything())</span><br><span class="line"></span><br><span class="line">	<span class="comment">// create the workqueue</span></span><br><span class="line">	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Bind the workqueue to a cache with the help of an informer. This way we make sure that</span></span><br><span class="line">	<span class="comment">// whenever the cache is updated, the endpoints key is added to the workqueue.</span></span><br><span class="line">	<span class="comment">// Note that when we finally process the item from the workqueue, we might see a newer version</span></span><br><span class="line">	<span class="comment">// of the endpoints than the version which was responsible for triggering the update.</span></span><br><span class="line">	indexer, informer := cache.NewIndexerInformer(endpointsListWatcher, &amp;v1.Endpoints&#123;&#125;, <span class="number">0</span>, cache.ResourceEventHandlerFuncs&#123;</span><br><span class="line">		AddFunc: <span class="function"><span class="keyword">func</span><span class="params">(obj <span class="keyword">interface</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">			key, err := cache.MetaNamespaceKeyFunc(obj)</span><br><span class="line">			<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">				queue.Add(QueueItem&#123;key, cache.Added, <span class="literal">nil</span>&#125;)</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">		&#125;,</span><br><span class="line">		UpdateFunc: <span class="function"><span class="keyword">func</span><span class="params">(old <span class="keyword">interface</span>&#123;&#125;, <span class="built_in">new</span> <span class="keyword">interface</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">			key, err := cache.MetaNamespaceKeyFunc(<span class="built_in">new</span>)</span><br><span class="line">			<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">				queue.Add(QueueItem&#123;key, cache.Updated, <span class="literal">nil</span>&#125;)</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			e1 := old.(*v1.Endpoints)</span><br><span class="line">			e2 := <span class="built_in">new</span>.(*v1.Endpoints)</span><br><span class="line">			e1Data, _ := json.MarshalIndent(e1, <span class="string">""</span>, <span class="string">" "</span>)</span><br><span class="line">			e2Data, _ := json.MarshalIndent(e2, <span class="string">""</span>, <span class="string">" "</span>)</span><br><span class="line">			fmt.Println(<span class="keyword">string</span>(e1Data), <span class="keyword">string</span>(e2Data))</span><br><span class="line">		&#125;,</span><br><span class="line"></span><br><span class="line">		DeleteFunc: <span class="function"><span class="keyword">func</span><span class="params">(obj <span class="keyword">interface</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">			<span class="comment">// IndexerInformer uses a delta queue, therefore for deletes we have to use this</span></span><br><span class="line">			<span class="comment">// key function.</span></span><br><span class="line">			<span class="comment">// 如果是未知错误导致删除的对象为 DeletedFinalStateUnknown， 而不是对应的对象，所以处理的时候需要特别注意。</span></span><br><span class="line">			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)</span><br><span class="line">			<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">				queue.Add(QueueItem&#123;key, cache.Deleted, obj&#125;)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;, cache.Indexers&#123;&#125;)</span><br><span class="line"></span><br><span class="line">	controller := NewController(queue, indexer, informer)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Now let's start the controller</span></span><br><span class="line">	stop := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span><br><span class="line">	<span class="keyword">defer</span> <span class="built_in">close</span>(stop)</span><br><span class="line">	<span class="keyword">go</span> controller.Run(<span class="number">1</span>, stop)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Wait forever</span></span><br><span class="line">	<span class="keyword">select</span> &#123;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="Sample-Controller-CDR"><a href="#Sample-Controller-CDR" class="headerlink" title="Sample Controller CDR"></a>Sample Controller CDR</h2><p>sample controller： github 地址： <a href="https://github.com/kubernetes/sample-controller，k8s" target="_blank" rel="noopener">https://github.com/kubernetes/sample-controller，k8s</a> 社区对于开发 Controller 也形成了一套 Pattern，具体参见：<a href="https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md" target="_blank" rel="noopener">https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md</a></p>
+<p>程序整体框架图：</p>
+<p><img src="https://www.do1618.com/wp-content/uploads/2018/04/sample-controller-1.png" alt=""></p>
+<p> sample controller running:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># assumes you have a working kubeconfig, not required if operating in-cluster</span></span><br><span class="line">$ go run *.go -kubeconfig=<span class="variable">$HOME</span>/.kube/config -logtostderr=<span class="literal">true</span></span><br><span class="line"><span class="comment"># 程序运行可能会报错  k8s.io/sample-controller/pkg/client/informers/externalversions/factory.go:73: Failed to list *v1alpha1.Foo: v1.ListOptions is not suitable for converting to "samplecontroller.k8s.io/v1alpha1"，这是因为自定义的 CRD Foo还未被创建出来，所以会报错，在执行下面的创建指令后则可以正常工作。</span></span><br><span class="line"> </span><br><span class="line"><span class="comment"># create a CustomResourceDefinition</span></span><br><span class="line">$ kubectl create -f artifacts/examples/crd.yaml</span><br><span class="line"><span class="comment"># kubectl get crd</span></span><br><span class="line"><span class="comment"># kubectl get Foo.samplecontroller.k8s.io</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># create a custom resource of type Foo</span></span><br><span class="line">$ kubectl create -f artifacts/examples/example-foo.yaml</span><br><span class="line"></span><br><span class="line"><span class="comment"># check deployments created through the custom resource</span></span><br><span class="line">$ kubectl get deployments</span><br></pre></td></tr></table></figure>
+<ol>
+<li><a href="https://github.com/kubernetes/kubernetes/issues/44894" target="_blank" rel="noopener">[RBAC] got a message: User “” cannot list pods at the cluster scope.</a></li>
+</ol>
+<blockquote>
+<p>此外由于 sample-controller 不同的分支，crd.yaml 文件注册的 apiVersion 可能不同，当 apiVersion 与 代码中的访问版本不匹配的时候，也不能够正常访问。例如 sample-controller 1.9 分支中 apiextensions.k8s.io/v1beta1， 那么代码中访问代码为 <code>c.kubeclientset.AppsV1().Deployments(foo.Namespace).Create(newDeployment(foo))</code>, 在 1.10  中 apiVersion 变为了 apiextensions.k8s.io/v1，所以需要特别注意。</p>
+</blockquote>
+<h2 id="Kubernets-API访问模型"><a href="#Kubernets-API访问模型" class="headerlink" title="Kubernets API访问模型"></a>Kubernets API访问模型</h2><p>REST API 是Kubernetes 的基石，所有的操作和通信都是通过 API Server来处理调用的。</p>
+<h3 id="API-versioning"><a href="#API-versioning" class="headerlink" title="API versioning"></a>API versioning</h3><p>Kubernetes 支持多版本 API，每个在不同的路径上比如：<code>/api/v1</code> 或者 <code>/apis/extensions/v1beta1</code>.</p>
+<p>API 版本依次演进： <strong>Alpha(v1alpha1)  -&gt; Beta(v2beta3)  -&gt; Stable(vx)</strong></p>
+<h3 id="API-groups"><a href="#API-groups" class="headerlink" title="API groups"></a>API groups</h3><p>API groups 主要目标是将单个 v1 API 接口按照细粒度的分组进行组织，方便与单独的启用或者停用，在不同的 groups 上支持不同的版本，可以独自演进，具体参见 <a href="https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md" target="_blank" rel="noopener"><strong>api-group.md</strong></a>。</p>
+<p>当前使用的 API Group如下：</p>
+<ol>
+<li><p><em>Core</em> (<em>legacy</em>) group，<code>/api/v1</code> ， apiVersion: v1</p>
+<p>两种使用方式：</p>
+<ul>
+<li><a href="http://127.0.0.1:8001/api/v1/pods" target="_blank" rel="noopener">http://127.0.0.1:8001/api/v1/pods</a>  List 集群范围内的全部pod</li>
+<li><p><a href="http://127.0.0.1:8001/api/v1/namespaces/soa/pods/authhttp-57d998968d-hn5zb" target="_blank" rel="noopener">http://127.0.0.1:8001/api/v1/namespaces/soa/pods/authhttp-57d998968d-hn5zb</a>  某个命名空间下的pods或者单个pod</p>
+  <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl proxy </span><br><span class="line">$ http://127.0.0.1:8001/api/v1</span><br><span class="line">&#123;</span><br><span class="line"> kind: <span class="string">"APIResourceList"</span>,</span><br><span class="line"> groupVersion: <span class="string">"v1"</span>,</span><br><span class="line"> resources: [xxxx]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li><p>Named groups are at REST path <code>/apis/$GROUP_NAME/$VERSION</code>, and use <code>apiVersion: $GROUP_NAME/$VERSION</code> (for example, <code>apiVersion: batch/v1</code>).</p>
+<ul>
+<li>查看 apis<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ http://127.0.0.1:8001/apis  可以查看到 APIGroupList</span><br><span class="line">&#123;</span><br><span class="line">    kind: <span class="string">"APIGroupList"</span>,</span><br><span class="line">    apiVersion: <span class="string">"v1"</span>,</span><br><span class="line">    groups: [xxxx]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li><p>xxx</p>
+</li>
+</ol>
+<p>当前有两种支持的方式来扩展 API：</p>
+<ol>
+<li><p><a href="https://kubernetes.io/docs/tasks/access-kubernetes-api/extend-api-custom-resource-definitions/" target="_blank" rel="noopener">自定义资源</a>(CustomResourceDefinition)，主要用于简单的 CRUD；早期版本叫做ThirdPartyResources</p>
+<p>，1.7版本引入 Alpha， 1.8 版本 Beta， 自定义资源必须实现 runtime.Object 接口，可以借助 <a href="https://github.com/kubernetes/code-generator" target="_blank" rel="noopener">k8s.io/code-generator</a> 来实现相关代码生成，具体可以参见 openshift 的样例仓库： <a href="https://github.com/openshift-evangelists/crd-code-generation" target="_blank" rel="noopener">openshift-evangelists/crd-code-generation</a></p>
+</li>
+<li><p>进行中的 API Server 扩展功能，通过  <a href="https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/aggregated-api-servers.md" target="_blank" rel="noopener">aggregator</a> 来进行分发，对于客户端透明；</p>
+</li>
+</ol>
+<h3 id="Controlling-Access-to-the-Kubernetes-API"><a href="#Controlling-Access-to-the-Kubernetes-API" class="headerlink" title="Controlling Access to the Kubernetes API"></a>Controlling Access to the Kubernetes API</h3><p>一个 API 的路径上回经历不同的验证阶段，目前主要有三个阶段如下图：</p>
+<p><img src="https://d33wubrfki0l68.cloudfront.net/673dbafd771491a080c02c6de3fdd41b09623c90/50100/images/docs/admin/access-control-overview.svg" alt=""></p>
+<p><strong>Authentication</strong></p>
+<p>详细的各种类型认证参见 <a href="https://kubernetes.io/docs/admin/authentication/" target="_blank" rel="noopener">Authenticating</a>. 该阶段主要是对于用户传递的用户名密码、证书、 Plain Tokens、Bootstrap Tokens和JWT Tokens（service accounts）的合法性进行检查。如果认证失败，则返回 401；如果用户认证成功，用户被认证为特定的 <code>username</code>, 用于后续的验证步骤，Kubernets 仅仅使用 <code>username</code> 用于访问的控制，内部并不存在对应的 <code>user</code> 对象来保存，也不保存 <code>username</code> 相关的信息。</p>
+<p><strong>Authorization</strong></p>
+<p>在此阶段，一个请求必须包括请求的 <code>username</code>、<code>action</code>以及 <code>action</code> 影响到的资源对象。如果当前存在策略允许用户具备权限完成对应的操作，那么授权则通过。</p>
+<p>如果 Bob具备以下的策略：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"apiVersion"</span>: <span class="string">"abac.authorization.kubernetes.io/v1beta1"</span>,</span><br><span class="line">    <span class="attr">"kind"</span>: <span class="string">"Policy"</span>,</span><br><span class="line">    <span class="attr">"spec"</span>: &#123;</span><br><span class="line">        <span class="attr">"user"</span>: <span class="string">"bob"</span>,</span><br><span class="line">        <span class="attr">"namespace"</span>: <span class="string">"projectCaribou"</span>,</span><br><span class="line">        <span class="attr">"resource"</span>: <span class="string">"pods"</span>,</span><br><span class="line">        <span class="attr">"readonly"</span>: <span class="literal">true</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>那么以下的访问则可以通过授权：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">  <span class="attr">"apiVersion"</span>: <span class="string">"authorization.k8s.io/v1beta1"</span>,</span><br><span class="line">  <span class="attr">"kind"</span>: <span class="string">"SubjectAccessReview"</span>,</span><br><span class="line">  <span class="attr">"spec"</span>: &#123;</span><br><span class="line">    <span class="attr">"resourceAttributes"</span>: &#123;</span><br><span class="line">      <span class="attr">"namespace"</span>: <span class="string">"projectCaribou"</span>,</span><br><span class="line">      <span class="attr">"verb"</span>: <span class="string">"get"</span>,</span><br><span class="line">      <span class="attr">"group"</span>: <span class="string">"unicorn.example.org"</span>,</span><br><span class="line">      <span class="attr">"resource"</span>: <span class="string">"pods"</span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Kubernets 支持多种授权模块：比如 Node、ABAC、RBAC 和 Webhook 方式。使用的授权模块可以在 API Server启动的时候进行指定，参数 <code>--authorization-mode=</code>。Kubernets 会依次检查设置的授权模块，如果任何一个能够满足授权需求，则通过，如果所有的授权模块都不满足，则会拒绝请求，返回403禁止访问。更加详细的介绍参见 <a href="https://kubernetes.io/docs/admin/accessing-the-api/" target="_blank" rel="noopener"> <a href="https://kubernetes.io/docs/admin/accessing-the-api/" target="_blank" rel="noopener">Accessing Control Overview</a></a></p>
+<p>Kubernetes reviews only the following API request attributes:</p>
+<ul>
+<li><strong>user</strong> - The <code>user</code> string provided during authentication.</li>
+<li><strong>group</strong> - The list of group names to which the authenticated user belongs.</li>
+<li><strong>“extra”</strong> - A map of arbitrary string keys to string values, provided by the authentication layer.</li>
+<li><strong>API</strong> - Indicates whether the request is for an API resource.</li>
+<li><strong>Request path</strong> - Path to miscellaneous non-resource endpoints like <code>/api</code> or <code>/healthz</code>.</li>
+<li><strong>API request verb</strong> - API verbs <code>get</code>, <code>list</code>, <code>create</code>, <code>update</code>, <code>patch</code>, <code>watch</code>, <code>proxy</code>, <code>redirect</code>, <code>delete</code>, and <code>deletecollection</code> are used for resource requests. To determine the request verb for a resource API endpoint, see <strong>Determine the request verb</strong> below.</li>
+<li><strong>HTTP request verb</strong> - HTTP verbs <code>get</code>, <code>post</code>, <code>put</code>, and <code>delete</code> are used for non-resource requests.</li>
+<li><strong>Resource</strong> - The ID or name of the resource that is being accessed (for resource requests only) – For resource requests using <code>get</code>, <code>update</code>, <code>patch</code>, and <code>delete</code> verbs, you must provide the resource name.</li>
+<li><strong>Subresource</strong> - The subresource that is being accessed (for resource requests only).</li>
+<li><strong>Namespace</strong> - The namespace of the object that is being accessed (for namespaced resource requests only).</li>
+<li><strong>API group</strong> - The API group being accessed (for resource requests only). An empty string designates the <a href="https://kubernetes.io/docs/concepts/overview/kubernetes-api/" target="_blank" rel="noopener">core API group</a>.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>HTTP verb</th>
+<th>request verb</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td>create</td>
+</tr>
+<tr>
+<td>GET, HEAD</td>
+<td>get (for individual resources), list (for collections)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td>update</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td>patch</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td>delete (for individual resources), deletecollection (for collections)</td>
+</tr>
+</tbody>
+</table>
+<p><code>kubectl</code> 提供 子命令 <code>auth can-i</code> 来快速验证，使用 <code>SelfSubjectAccessReview</code> API 来确定当前用户是否具备某些操作。例如：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl auth can-i create deployments --namespace dev</span><br><span class="line">yes</span><br><span class="line">$ kubectl auth can-i create deployments --namespace prod</span><br><span class="line">no</span><br></pre></td></tr></table></figure>
+<p>也可以通过创建 Kubernets 资源的方式来使用：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl create -f - -o yaml &lt;&lt; EOF</span><br><span class="line">apiVersion: authorization.k8s.io/v1</span><br><span class="line">kind: SelfSubjectAccessReview</span><br><span class="line">spec:</span><br><span class="line">  resourceAttributes:</span><br><span class="line">    group: apps</span><br><span class="line">    name: deployments</span><br><span class="line">    verb: create</span><br><span class="line">    namespace: dev</span><br><span class="line">EOF</span><br><span class="line"></span><br><span class="line">apiVersion: authorization.k8s.io/v1</span><br><span class="line">kind: SelfSubjectAccessReview</span><br><span class="line">metadata:</span><br><span class="line">  creationTimestamp: null</span><br><span class="line">spec:</span><br><span class="line">  resourceAttributes:</span><br><span class="line">    group: apps</span><br><span class="line">    name: deployments</span><br><span class="line">    namespace: dev</span><br><span class="line">    verb: create</span><br><span class="line">status:</span><br><span class="line">  allowed: <span class="literal">true</span></span><br><span class="line">  denied: <span class="literal">false</span></span><br></pre></td></tr></table></figure>
+<p><strong>Admission Control</strong></p>
+<p>Adminssion Control 模块可以修改或者拒绝请求。除了 Authorization 模块涉及的属性外，Adminssion Control 模块还可以访问创建或者更新的对象内容。模块会对创建、删除、更新、连接（代理）的对象产生租用，但是不包括读取操作。Adminssion Control可以配置多个，按照顺序依次调用。</p>
+<p>与 Authentication 和 Authorization 模块不同，如果任何Adminssion Control模块拒绝，则该请求立即被拒绝。除了拒绝对象之外，Adminssion Control还可以为字段设置复杂的默认值。更加具体的介绍参见 <a href="https://kubernetes.io/docs/admin/admission-controllers/" target="_blank" rel="noopener">Using Admission Controllers</a>  章节。一旦请求通过了所有Adminssion Control，就会使用相应API对象的验证进行验证，然后写入对象存储库（如步骤4所示）。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ kube-apiserver --<span class="built_in">enable</span>-admission-plugins=NamespaceLifecyle,LimitRanger ...</span><br></pre></td></tr></table></figure>
+<p>1.9 版本以上推荐使用的列表如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">--admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota</span><br></pre></td></tr></table></figure>
+<p>Adminssion Control 过程分两个阶段进行。 在第一阶段，运行突变（mutating）准入控制器。 在第二阶段，验证（validating）Adminssion Control 运行。 某些控制器两个阶段都有。</p>
+<p>由于早期模型存在以下限制：</p>
+<ol>
+<li><p>必须编译到 kube-apiserver中</p>
+</li>
+<li><p>只能在 apiserver 启动的时候配置</p>
+</li>
+</ol>
+<p>为了提升 Admission Control的灵活性，从 1.7 版本开始，提供新的特性 <em>Initializers</em> and <em>External Admission Webhooks</em>， 允许admission controllers 可以在外部进行开发，在运行时候进行配置，具体参见 <a href="https://kubernetes.io/docs/admin/extensible-admission-controllers/" target="_blank" rel="noopener">Dynamic Admission Control</a>, 1.9 版本中 <em>Admission Webhooks</em> (beta in 1.9) and <em>Initializers</em> (alpha)。</p>
+<p><strong>admission webhooks</strong>: http回调地址，接受 admission 的请求并处理相关请求内容，有两种类型： <a href="https://kubernetes.io/docs/admin/admission-controllers.md#validatingadmissionwebhook-alpha-in-18-beta-in-19" target="_blank" rel="noopener">ValidatingAdmissionWebhooks</a> 和 <a href="https://kubernetes.io/docs/admin/admission-controllers.md#mutatingadmissionwebhook-beta-in-19" target="_blank" rel="noopener">MutatingAdmissionWebhooks</a>。具体样例可以参考：<a href="https://github.com/caesarxuchao/example-webhook-admission-controller" target="_blank" rel="noopener">caesarxuchao/example-webhook-admission-controller</a>， 样例程序展示了一个如何通过 admission controller 来限制用户只能从特定的 Docker Registry Repo 下载镜像。</p>
+<h2 id="CRD"><a href="#CRD" class="headerlink" title="CRD"></a>CRD</h2><p>创建和管理CRD的client库位于：<a href="https://github.com/kubernetes/apiextensions-apiserver" target="_blank" rel="noopener">https://github.com/kubernetes/apiextensions-apiserver</a></p>
+<blockquote>
+<p>API server for API extensions like CustomResourceDefinitions</p>
+<p>It provides an API for registering <code>CustomResourceDefinitions</code></p>
+</blockquote>
+<p>一开始我一直很执着地认为 CRD 的注册函数应该位于 client-go 这个库中，而且官方提供的 <a href="https://github.com/kubernetes/sample-controller" target="_blank" rel="noopener">controller-sample</a> 也只是演示了如何通过 <a href="https://github.com/kubernetes/code-generator" target="_blank" rel="noopener"><code>k8s.io/code-generator</code></a> 进行生成 CRD 客户端读取代码，样例中的资源创建都是通过编写 yaml文件，通过 kubectl 来进行创建的，主要演示步骤如下：</p>
+ <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># assumes you have a working kubeconfig, not required if operating in-cluster</span></span><br><span class="line"><span class="comment"># 运行程序，来进行CRD的读取</span></span><br><span class="line">$ go run *.go -kubeconfig=<span class="variable">$HOME</span>/.kube/config</span><br><span class="line"> </span><br><span class="line"><span class="comment"># 通过 kubectl 手工创建 CRD</span></span><br><span class="line"><span class="comment"># create a CustomResourceDefinition</span></span><br><span class="line">$ kubectl create -f artifacts/examples/crd.yaml</span><br><span class="line">  </span><br><span class="line"><span class="comment"># create a custom resource of type Foo</span></span><br><span class="line">$ kubectl create -f artifacts/examples/example-foo.yaml</span><br><span class="line">  </span><br><span class="line"><span class="comment"># check deployments created through the custom resource</span></span><br><span class="line">$ kubectl get deployments</span><br></pre></td></tr></table></figure>
+<p>后来参考了一个 <a href="https://github.com/rook/operator-kit" target="_blank" rel="noopener">operator-kit</a> (A library for creating a Kubernetes Operator)，提供 <a href="https://github.com/rook/operator-kit/tree/master/sample-operator" target="_blank" rel="noopener">sample-operator</a>  中进行 CRD 注册的部分也是采用的 <code>apiextensionsclient &quot;k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset&quot;</code> 来进行连接并<a href="https://github.com/rook/operator-kit/blob/master/resource.go#L133" target="_blank" rel="noopener">调用</a>： </p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">APIExtensionClientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)</span><br></pre></td></tr></table></figure>
+<p>我曾经尝试将 <code>apiextensions-apiserver/pkg/client/clientset/clientset</code> 与 <code>client-go</code> 原生的连接进行共同使用，也就是想通过 <code>apiextensions-apiserver</code> 来进行创建CRD，而同时使用 <code>client-go</code> 提供的客户端功能进行读取，结果就遇到包依赖的各种问题，真正原因是： <code>apiextensions-apiserver</code> 底层也依赖于 <code>client-go</code>, 如果我们的程序同时使用  <code>apiextensions-apiserver</code>与<code>client-go</code>会造成资源定义位于不同的包，从而报错：</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">graph TD;</span><br><span class="line">sampleController--&gt;apiextensions_apiserver;</span><br><span class="line">apiextensions_apiserver--&gt;client-go;</span><br><span class="line">sampleController--&gt;client-go;</span><br></pre></td></tr></table></figure>
+<p>直到后面我看到 <a href="https://github.com/kubernetes/client-go/issues/247" target="_blank" rel="noopener">Including CRD client into client-go repo #247</a>, 才明白两者当前是分开实现的，如果同时使用的话则会造成包依赖出问题。</p>
+<h4 id="databases-crd-yaml"><a href="#databases-crd-yaml" class="headerlink" title="databases-crd.yaml"></a><strong>databases-crd.yaml</strong></h4><figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">apiextensions.k8s.io/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">CustomResourceDefinition</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">databases.example.com</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  group:</span> <span class="string">example.com</span></span><br><span class="line"><span class="attr">  names:</span></span><br><span class="line"><span class="attr">    kind:</span> <span class="string">Database</span></span><br><span class="line"><span class="attr">    listKind:</span> <span class="string">DatabaseList</span></span><br><span class="line"><span class="attr">    plural:</span> <span class="string">databases</span></span><br><span class="line"><span class="attr">  scope:</span> <span class="string">Namespaced</span></span><br><span class="line"><span class="attr">  version:</span> <span class="string">v1</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl get crd databases.example.com -o yaml</span><br></pre></td></tr></table></figure>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">apiextensions.k8s.io/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">CustomResourceDefinition</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  creationTimestamp:</span> <span class="number">2018</span><span class="bullet">-03</span><span class="bullet">-29</span><span class="attr">T03:22:19Z</span></span><br><span class="line"><span class="attr">  generation:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">databases.example.com</span></span><br><span class="line"><span class="attr">  resourceVersion:</span> <span class="string">"55196245"</span></span><br><span class="line"><span class="attr">  selfLink:</span> <span class="string">/apis/apiextensions.k8s.io/v1beta1/customresourcedefinitions/databases.example.com</span></span><br><span class="line"><span class="attr">  uid:</span> <span class="number">6322</span><span class="string">bc2d-3300-11e8-a6d0-00163e000fbf</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  group:</span> <span class="string">example.com</span></span><br><span class="line"><span class="attr">  names:</span></span><br><span class="line"><span class="attr">    kind:</span> <span class="string">Database</span></span><br><span class="line"><span class="attr">    listKind:</span> <span class="string">DatabaseList</span></span><br><span class="line"><span class="attr">    plural:</span> <span class="string">databases</span></span><br><span class="line"><span class="attr">    singular:</span> <span class="string">database</span></span><br><span class="line"><span class="attr">  scope:</span> <span class="string">Namespaced</span></span><br><span class="line"><span class="attr">  version:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">status:</span></span><br><span class="line"><span class="attr">  acceptedNames:</span></span><br><span class="line"><span class="attr">    kind:</span> <span class="string">Database</span></span><br><span class="line"><span class="attr">    listKind:</span> <span class="string">DatabaseList</span></span><br><span class="line"><span class="attr">    plural:</span> <span class="string">databases</span></span><br><span class="line"><span class="attr">    singular:</span> <span class="string">database</span></span><br><span class="line"><span class="attr">  conditions:</span></span><br><span class="line"><span class="attr">  - lastTransitionTime:</span> <span class="literal">null</span></span><br><span class="line"><span class="attr">    message:</span> <span class="literal">no</span> <span class="string">conflicts</span> <span class="string">found</span></span><br><span class="line"><span class="attr">    reason:</span> <span class="string">NoConflicts</span></span><br><span class="line"><span class="attr">    status:</span> <span class="string">"True"</span></span><br><span class="line"><span class="attr">    type:</span> <span class="string">NamesAccepted</span></span><br><span class="line"><span class="attr">  - lastTransitionTime:</span> <span class="number">2018</span><span class="bullet">-03</span><span class="bullet">-29</span><span class="attr">T03:22:19Z</span></span><br><span class="line"><span class="attr">    message:</span> <span class="string">the</span> <span class="string">initial</span> <span class="string">names</span> <span class="string">have</span> <span class="string">been</span> <span class="string">accepted</span></span><br><span class="line"><span class="attr">    reason:</span> <span class="string">InitialNamesAccepted</span></span><br><span class="line"><span class="attr">    status:</span> <span class="string">"True"</span></span><br><span class="line"><span class="attr">    type:</span> <span class="string">Established</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">$ curl  http://127.0.0.1:8001/apis/example.com</span><br><span class="line">&#123;</span><br><span class="line">  <span class="attr">"kind"</span>: <span class="string">"APIGroup"</span>,</span><br><span class="line">  <span class="attr">"apiVersion"</span>: <span class="string">"v1"</span>,</span><br><span class="line">  <span class="attr">"name"</span>: <span class="string">"example.com"</span>,</span><br><span class="line">  <span class="attr">"versions"</span>: [</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="attr">"groupVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">      <span class="attr">"version"</span>: <span class="string">"v1"</span></span><br><span class="line">    &#125;</span><br><span class="line">  ],</span><br><span class="line">  <span class="attr">"preferredVersion"</span>: &#123;</span><br><span class="line">    <span class="attr">"groupVersion"</span>: <span class="string">"example.com/v1"</span>,</span><br><span class="line">    <span class="attr">"version"</span>: <span class="string">"v1"</span></span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="attr">"serverAddressByClientCIDRs"</span>: <span class="literal">null</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>为新创建的 CRD 创建一个实例</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">$</span> <span class="string">cat</span> <span class="string">wordpress-database.yaml</span></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">example.com/v1</span></span><br><span class="line"><span class="attr">kind:</span>       <span class="string">Database</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span>     <span class="string">wordpress</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  user:</span>     <span class="string">wp</span></span><br><span class="line"><span class="attr">  password:</span> <span class="string">secret</span></span><br><span class="line"><span class="attr">  encoding:</span> <span class="string">unicode</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl create -f wordpress-database.yaml</span><br><span class="line">database <span class="string">"wordpress"</span> created</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl get databases.example.com</span><br><span class="line">NAME        AGE</span><br><span class="line">wordpress   24s</span><br></pre></td></tr></table></figure>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">$ curl http://127.0.0.1:8001/apis/example.com/v1/namespaces/default/databases</span><br><span class="line">&#123;</span><br><span class="line">　　<span class="attr">"apiVersion"</span>:<span class="string">"example.com/v1"</span>,</span><br><span class="line">　　<span class="attr">"items"</span>:[</span><br><span class="line">　　　　&#123;</span><br><span class="line">　　　　　　<span class="attr">"apiVersion"</span>:<span class="string">"example.com/v1"</span>,</span><br><span class="line">　　　　　　<span class="attr">"kind"</span>:<span class="string">"Database"</span>,</span><br><span class="line">　　　　　　<span class="attr">"metadata"</span>:&#123;</span><br><span class="line">　　　　　　　　<span class="attr">"clusterName"</span>:<span class="string">""</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"creationTimestamp"</span>:<span class="string">"2018-03-29T03:35:18Z"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"deletionGracePeriodSeconds"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"deletionTimestamp"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"initializers"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"name"</span>:<span class="string">"wordpress"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"namespace"</span>:<span class="string">"default"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"resourceVersion"</span>:<span class="string">"55197116"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"selfLink"</span>:<span class="string">"/apis/example.com/v1/namespaces/default/databases/wordpress"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"uid"</span>:<span class="string">"338142cb-3302-11e8-a6d0-00163e000fbf"</span></span><br><span class="line">　　　　　　&#125;,</span><br><span class="line">　　　　　　<span class="attr">"spec"</span>:&#123;</span><br><span class="line">　　　　　　　　<span class="attr">"encoding"</span>:<span class="string">"unicode"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"password"</span>:<span class="string">"secret"</span>,</span><br><span class="line">　　　　　　　　<span class="attr">"user"</span>:<span class="string">"wp"</span></span><br><span class="line">　　　　　　&#125;</span><br><span class="line">　　　　&#125;</span><br><span class="line">　　],</span><br><span class="line">　　<span class="attr">"kind"</span>:<span class="string">"DatabaseList"</span>,</span><br><span class="line">　　<span class="attr">"metadata"</span>:&#123;</span><br><span class="line">　　　　<span class="attr">"continue"</span>:<span class="string">""</span>,</span><br><span class="line">　　　　<span class="attr">"resourceVersion"</span>:<span class="string">"55197242"</span>,</span><br><span class="line">　　　　<span class="attr">"selfLink"</span>:<span class="string">"/apis/example.com/v1/namespaces/default/databases"</span></span><br><span class="line">　　&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">$ curl http://127.0.0.1:8001/apis/example.com/v1/namespaces/default/databases/wordpress</span><br><span class="line">&#123;</span><br><span class="line">　　<span class="attr">"apiVersion"</span>:<span class="string">"example.com/v1"</span>,</span><br><span class="line">　　<span class="attr">"kind"</span>:<span class="string">"Database"</span>,</span><br><span class="line">　　<span class="attr">"metadata"</span>:&#123;</span><br><span class="line">　　　　<span class="attr">"clusterName"</span>:<span class="string">""</span>,</span><br><span class="line">　　　　<span class="attr">"creationTimestamp"</span>:<span class="string">"2018-03-29T03:35:18Z"</span>,</span><br><span class="line">　　　　<span class="attr">"deletionGracePeriodSeconds"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　<span class="attr">"deletionTimestamp"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　<span class="attr">"initializers"</span>:<span class="literal">null</span>,</span><br><span class="line">　　　　<span class="attr">"name"</span>:<span class="string">"wordpress"</span>,</span><br><span class="line">　　　　<span class="attr">"namespace"</span>:<span class="string">"default"</span>,</span><br><span class="line">　　　　<span class="attr">"resourceVersion"</span>:<span class="string">"55197116"</span>,</span><br><span class="line">　　　　<span class="attr">"selfLink"</span>:<span class="string">"/apis/example.com/v1/namespaces/default/databases/wordpress"</span>,</span><br><span class="line">　　　　<span class="attr">"uid"</span>:<span class="string">"338142cb-3302-11e8-a6d0-00163e000fbf"</span></span><br><span class="line">　　&#125;,</span><br><span class="line">　　<span class="attr">"spec"</span>:&#123;</span><br><span class="line">　　　　<span class="attr">"encoding"</span>:<span class="string">"unicode"</span>,</span><br><span class="line">　　　　<span class="attr">"password"</span>:<span class="string">"secret"</span>,</span><br><span class="line">　　　　<span class="attr">"user"</span>:<span class="string">"wp"</span></span><br><span class="line">　　&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>基于 CRD 开发的 Controller 一般称作  Operator, 简单样例参见 Rook 的具体样例  <a href="https://github.com/rook/operator-kit/tree/master/sample-operator" target="_blank" rel="noopener">https://github.com/rook/operator-kit/tree/master/sample-operator</a></p>
+<h2 id="快速搭建-minikube-环境"><a href="#快速搭建-minikube-环境" class="headerlink" title="快速搭建 minikube 环境"></a>快速搭建 minikube 环境</h2><p>当前 minikube  0.25.2 ， k8s支持  1.9.4</p>
+<p><a href="https://github.com/kubernetes/minikube/releases/download/v0.25.2/minikube-darwin-amd64" target="_blank" rel="noopener">minikube-darwin-amd64 0.25.2</a>，命令行安装：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.25.2/minikube-darwin-amd64 &amp;&amp; chmod +x minikube &amp;&amp; sudo mv minikube /usr/<span class="built_in">local</span>/bin/</span><br><span class="line"></span><br><span class="line">minikube start --kubernetes-version v1.9.4</span><br><span class="line"></span><br><span class="line"><span class="comment"># 参考</span></span><br><span class="line"><span class="comment"># minikube --bootstrapper=kubeadm --extra-config=kubelet.authorization-mode=AlwaysAllow --kubernetes-version=v1.8.5 start</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># minikube 配置 Kubernets 的参数 参见 https://sourcegraph.com/github.com/kubernetes/minikube@master/-/blob/docs/configuring_kubernetes.md</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 官方网址地址 https://kubernetes.io/docs/getting-started-guides/minikube/</span></span><br><span class="line"></span><br><span class="line">--extra-config=apiserver.AllowPrivileged=<span class="literal">true</span></span><br></pre></td></tr></table></figure>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://semver.org/lang/zh-CN/" target="_blank" rel="noopener">语义化版本 2.0.0</a></li>
+<li><a href="https://blog.openshift.com/kubernetes-deep-dive-code-generation-customresources/" target="_blank" rel="noopener">Kubernetes Deep Dive: Code Generation for CustomResources</a></li>
+<li><a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-1/" target="_blank" rel="noopener">Kubernetes deep dive: API Server – part 1</a></li>
+<li><a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-2/" target="_blank" rel="noopener">Kubernetes Deep Dive: API Server – Part 2</a></li>
+<li><a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-3a/" target="_blank" rel="noopener">Kubernetes Deep Dive: API Server – Part 3a</a></li>
+<li><a href="https://kubernetes.io/docs/tasks/access-kubernetes-api/extend-api-custom-resource-definitions/" target="_blank" rel="noopener">Extend the Kubernetes API with CustomResourceDefinitions</a></li>
+<li><a href="https://schd.ws/hosted_files/kccncna17/07/ExtendingKubernetes101.pdf" target="_blank" rel="noopener">Extending Kubernetes 101</a></li>
+<li><a href="https://yucs.github.io/2017/12/21/2017-12-21-operator/" target="_blank" rel="noopener">开发operator扩展kubernetes 调研整理</a> <a href="https://github.com/yucs/yucs-awesome-resource" target="_blank" rel="noopener">Github 地址</a></li>
+<li><a href="https://blog.heptio.com/an-introduction-to-extending-kubernetes-with-customresourcedefinitions-76deb675b27a" target="_blank" rel="noopener">An Introduction to Extending Kubernetes with CustomResourceDefinitions</a></li>
+<li><a href="https://github.com/rook/operator-kit" target="_blank" rel="noopener">Operator kit: Library to create a custom controller</a></li>
+<li><a href="https://github.com/kubernetes/minikube/issues/1158" target="_blank" rel="noopener">localkube consumes CPU when system is “idle” #1158</a></li>
+<li><a href="https://thenewstack.io/extend-kubernetes-1-7-custom-resources/" target="_blank" rel="noopener">Extend Kubernetes 1.7 with Custom Resources</a>  仓库 <a href="https://github.com/yaronha/kube-crd" target="_blank" rel="noopener">https://github.com/yaronha/kube-crd</a></li>
+</ol>
+<hr>
+<p><strong>除特别声明本站文章均属原创（翻译内容除外），如需要转载请事先联系，转载需要注明作者原文链接地址。</strong></p>
+<hr>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/04/02/Google-Cloud-Translation-API/" title="Google" cloud="" translation="" api="" 入门="">
+                    <div class="nextTitle">Google Cloud Translation API 入门</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/03/23/gke_istio_microservices_3/" title="Google" kubernetes引擎上使用istio简化微服务 — 第="" iii="" 部分（译）="">
+                    <div class="prevTitle">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/03/28/client-go-controller/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "使用 client-go 开发 controller"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#使用-client-go-开发-controller"><span class="toc-number">1.</span> <span class="toc-text">使用 client-go 开发 controller</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#client-go-介绍"><span class="toc-number">1.1.</span> <span class="toc-text">client-go 介绍</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Compatibility-matrix"><span class="toc-number">1.1.0.1.</span> <span class="toc-text">Compatibility matrix</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Visit-k8s-Cluster-Resource"><span class="toc-number">1.2.</span> <span class="toc-text">Visit k8s Cluster Resource</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Visit-List-Watch-k8s-Cluster-Resource"><span class="toc-number">1.3.</span> <span class="toc-text">Visit List/Watch k8s Cluster Resource</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Sample-Controller-CDR"><span class="toc-number">1.4.</span> <span class="toc-text">Sample Controller CDR</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Kubernets-API访问模型"><span class="toc-number">1.5.</span> <span class="toc-text">Kubernets API访问模型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#API-versioning"><span class="toc-number">1.5.1.</span> <span class="toc-text">API versioning</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#API-groups"><span class="toc-number">1.5.2.</span> <span class="toc-text">API groups</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Controlling-Access-to-the-Kubernetes-API"><span class="toc-number">1.5.3.</span> <span class="toc-text">Controlling Access to the Kubernetes API</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CRD"><span class="toc-number">1.6.</span> <span class="toc-text">CRD</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#databases-crd-yaml"><span class="toc-number">1.6.0.1.</span> <span class="toc-text">databases-crd.yaml</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#快速搭建-minikube-环境"><span class="toc-number">1.7.</span> <span class="toc-text">快速搭建 minikube 环境</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">1.8.</span> <span class="toc-text">参考</span></a></li></ol></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

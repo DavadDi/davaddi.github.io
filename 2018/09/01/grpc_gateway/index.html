@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>gRPC 之 Gateway · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">gRPC 之 Gateway</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            gRPC 之 Gateway
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="grpc">grpc</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2018/09/01</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>调研对象：</p>
+<ul>
+<li>Kong</li>
+<li>Traefix</li>
+<li>Envoy</li>
+</ul>
+<h2 id="Kong-CE-版本"><a href="#Kong-CE-版本" class="headerlink" title="Kong CE 版本"></a>Kong CE 版本</h2><p><a href="https://konghq.com/kong-community-edition/" target="_blank" rel="noopener">官网</a> 和 <a href="https://github.com/Kong/kong" target="_blank" rel="noopener">GitHub Repo</a>。</p>
+<p>Kong 版本：</p>
+<ul>
+<li><a href="https://docs.konghq.com/" target="_blank" rel="noopener">Community Edition (CE)</a></li>
+<li><a href="https://docs.konghq.com/enterprise" target="_blank" rel="noopener">Enterprise Edition (EE)</a></li>
+</ul>
+<p>CE 当前版本 0.14.1。Kong 底层采用 OpenRestry 开发。</p>
+<blockquote>
+<p>Kong is a cloud-native, fast, scalable, and distributed Microservice Abstraction Layer <em>(also known as an API Gateway, API Middleware or in some cases Service Mesh)</em>. Made available as an open-source project in 2015, its core values are high performance and extensibility</p>
+</blockquote>
+<p><img src="https://camo.githubusercontent.com/d4d0dcb22c223db0bf2e301aab0dddb3015f1729/68747470733a2f2f6b6f6e6768712e636f6d2f77702d636f6e74656e742f75706c6f6164732f323031382f30352f6b6f6e672d62656e65666974732d6769746875622d726561646d652e706e67" alt="Arch"></p>
+<h3 id="Kong-CE-Features"><a href="#Kong-CE-Features" class="headerlink" title="Kong CE Features"></a>Kong CE Features</h3><ul>
+<li><strong>Cloud-Native</strong>: Platform agnostic, Kong can run from bare metal to<br>Kubernetes.</li>
+<li><strong>Dynamic Load Balancing</strong>: Load balance traffic across multiple upstream<br>services.</li>
+<li><strong>Hash-based Load Balancing</strong>: Load balance with consistent hashing/sticky<br>sessions.</li>
+<li><strong>Circuit-Breaker</strong>: Intelligent tracking of unhealthy upstream services.</li>
+<li><strong>Health Checks:</strong> Active and passive monitoring of your upstream services.</li>
+<li><strong>Service Discovery</strong>: Resolve SRV records in third-party DNS resolvers like<br>Consul.</li>
+<li><strong>Serverless</strong>: Invoke and secure AWS Lambda or OpenWhisk functions directly<br>from Kong.</li>
+<li><strong>WebSockets</strong>: Communicate to your upstream services via WebSockets.</li>
+<li><strong>OAuth2.0</strong>: Easily add OAuth2.0 authentication to your APIs.</li>
+<li><strong>Logging</strong>: Log requests and responses to your system over HTTP, TCP, UDP,<br>or to disk.</li>
+<li><strong>Security</strong>: ACL, Bot detection, whitelist/blacklist IPs, etc…</li>
+<li><strong>Syslog</strong>: Logging to System log.</li>
+<li><strong>SSL</strong>: Setup a Specific SSL Certificate for an underlying service or API.</li>
+<li><strong>Monitoring</strong>: Live monitoring provides key load and performance server<br>metrics.</li>
+<li><strong>Forward Proxy</strong>: Make Kong connect to intermediary transparent HTTP proxies.</li>
+<li><strong>Authentications</strong>: HMAC, JWT, Basic, and more.</li>
+<li><strong>Rate-limiting</strong>: Block and throttle requests based on many variables.</li>
+<li><strong>Transformations</strong>: Add, remove, or manipulate HTTP requests and responses.</li>
+<li><strong>Caching</strong>: Cache and serve responses at the proxy layer.</li>
+<li><strong>CLI</strong>: Control your Kong cluster from the command line.</li>
+<li><strong>REST API</strong>: Kong can be operated with its RESTful API for maximum<br>flexibility.</li>
+<li><strong>Geo-Replicated</strong>: Configs are always up-to-date across different regions.</li>
+<li><strong>Failure Detection &amp; Recovery</strong>: Kong is unaffected if one of your Cassandra<br>nodes goes down.</li>
+<li><strong>Clustering</strong>: All Kong nodes auto-join the cluster keeping their config<br>updated across nodes.</li>
+<li><strong>Scalability</strong>: Distributed by nature, Kong scales horizontally by simply<br>adding nodes.</li>
+<li><strong>Performance</strong>: Kong handles load with ease by scaling and using NGINX at<br>the core.</li>
+<li><strong>Plugins</strong>: Extendable architecture for adding functionality to Kong and<br>APIs.</li>
+</ul>
+<h3 id="OpenRestry"><a href="#OpenRestry" class="headerlink" title="OpenRestry"></a>OpenRestry</h3><p><a href="https://openresty.org/" target="_blank" rel="noopener">官网</a> 和 <a href="https://github.com/openresty/openresty" target="_blank" rel="noopener">GitHub Repo</a>。<br>作者章亦春 (agentzh)，底层实现采用 Nginx + Lua 结合的方式进行，非常灵活，易于扩展。<br>Nginx 在 2018 年 4 月 17 号发布的版本 1.13.10 已经支持增加了对于 gRPC 的支持，<br>参见：<a href="https://www.nginx.com/blog/nginx-1-13-10-grpc/" target="_blank" rel="noopener">Introducing gRPC Support with NGINX 1.13.10</a>。</p>
+<p>OpenRestry 当前支持最新版为 2018 年 5 月 14 号发布的  <a href="1.13.6">1.13.6.x</a> ，还不支持 Nginx 1.13.10，其版本列表参见：<a href="https://openresty.org/cn/changes.html" target="_blank" rel="noopener">changes.html</a>。 倒数第二个版本 1.11.2 发布时间为 2017 年 8月 18 号。</p>
+<p>Nginx 对于 HTTP 2 支持的相关情况可以参见 <a href="https://www.nginx.com/?s=http2" target="_blank" rel="noopener">http2</a> , gRPC 支持的情况参见 <a href="https://www.nginx.com/?s=grpc" target="_blank" rel="noopener">gRPC</a>。</p>
+<h2 id="Traefik"><a href="#Traefik" class="headerlink" title="Traefik"></a><a href="https://traefik.io/" target="_blank" rel="noopener">Traefik</a></h2><p><a href="https://traefik.io/" target="_blank" rel="noopener">官网地址</a> 和 <a href="https://github.com/containous/traefik" target="_blank" rel="noopener">GitHub Repo</a>。</p>
+<blockquote>
+<p>Træfik is a modern HTTP reverse proxy and load balancer that makes<br>deploying microservices easy. Træfik integrates with your existing infrastructure<br>components (<a href="https://www.docker.com/" target="_blank" rel="noopener">Docker</a>, <a href="https://docs.docker.com/engine/swarm/" target="_blank" rel="noopener">Swarm mode</a>,<a href="https://kubernetes.io/" target="_blank" rel="noopener">Kubernetes</a>, <a href="https://mesosphere.github.io/marathon/" target="_blank" rel="noopener">Marathon</a>, <a href="https://www.consul.io/" target="_blank" rel="noopener">Consul</a>, <a href="https://coreos.com/etcd/" target="_blank" rel="noopener">Etcd</a>, <a href="https://rancher.com/" target="_blank" rel="noopener">Rancher</a>, <a href="https://aws.amazon.com/ecs" target="_blank" rel="noopener">Amazon ECS</a>, …)<br>and configures itself automatically and dynamically. Pointing Træfik at your orchestrator<br>should be the <em>only</em>configuration step you need.</p>
+</blockquote>
+<p><img src="https://d33wubrfki0l68.cloudfront.net/7c5fd7d38c371e23cdff059e6cebb10292cd441c/7d420/assets/img/traefik-architecture.svg" alt="arch"></p>
+<h3 id="Traefik-Features"><a href="#Traefik-Features" class="headerlink" title="Traefik Features"></a>Traefik Features</h3><ul>
+<li>Continuously updates its configuration (No restarts!)</li>
+<li>Supports multiple load balancing algorithms</li>
+<li>Provides HTTPS to your microservices by leveraging <a href="https://letsencrypt.org" target="_blank" rel="noopener">Let’s Encrypt</a>  (wildcard certificates support)</li>
+<li>Circuit breakers, retry</li>
+<li>High Availability with cluster mode (beta)</li>
+<li>See the magic through its clean web UI</li>
+<li><strong>Websocket, HTTP/2, GRPC ready</strong></li>
+<li>Provides metrics (Rest, Prometheus, Datadog, Statsd, InfluxDB)</li>
+<li>Keeps access logs (JSON, CLF)</li>
+<li>Fast</li>
+<li>Exposes a Rest API</li>
+<li>Packaged as a single binary file (made with :heart: with go) and available as a <a href="https://microbadger.com/images/traefik" target="_blank" rel="noopener">tiny</a> <a href="https://hub.docker.com/r/_/traefik/" target="_blank" rel="noopener">official</a> docker image</li>
+</ul>
+<h2 id="Ambassador-Envoy-Gateway"><a href="#Ambassador-Envoy-Gateway" class="headerlink" title="Ambassador (Envoy Gateway)"></a><a href="https://www.getambassador.io/" target="_blank" rel="noopener">Ambassador</a> (Envoy Gateway)</h2><p><a href="https://www.getambassador.io/" target="_blank" rel="noopener">官网</a> <a href="https://github.com/datawire/ambassador" target="_blank" rel="noopener">GitHub Repo</a>。 Ambassador 底层基于 <a href="https://www.envoyproxy.io/" target="_blank" rel="noopener">Envoy</a>。由于 Envoy 天然支持 gRPC， 因此 Ambassador 也完全支持 gRPC 代理。</p>
+<blockquote>
+<p><a href="https://www.getambassador.io/" target="_blank" rel="noopener">Ambassador</a> is an open source Kubernetes-native API Gateway built on <a href="https://www.envoyproxy.io/" target="_blank" rel="noopener">Envoy</a>, designed for microservices. Ambassador essentially serves as an Envoy ingress controller, but with many more features.</p>
+</blockquote>
+<h3 id="Ambassador-Features"><a href="#Ambassador-Features" class="headerlink" title="Ambassador Features"></a>Ambassador Features</h3><ul>
+<li>Self-service configuration, via Kubernetes annotations</li>
+<li><strong>First class <a href="https://www.getambassador.io/user-guide/grpc" target="_blank" rel="noopener">gRPC and HTTP/2 support</a></strong></li>
+<li>Support for CORS, timeouts, weighted round robin (<a href="https://www.getambassador.io/reference/canary" target="_blank" rel="noopener">canary</a>), <a href="https://www.getambassador.io/reference/services/rate-limit-service" target="_blank" rel="noopener">rate limiting</a></li>
+<li><a href="https://www.getambassador.io/user-guide/with-istio" target="_blank" rel="noopener">Istio integration</a></li>
+<li><a href="https://www.getambassador.io/reference/services/auth-service" target="_blank" rel="noopener">Authentication</a></li>
+<li>Robust TLS support, including TLS client-certificate authentication</li>
+</ul>
+<h2 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h2><ul>
+<li><a href="https://konghq.com/kong-community-edition/" target="_blank" rel="noopener">Kong CE</a> 对于 gRPC 的支持取决于 OpenRestry 对于 Nginx 版本的支持情况，按照 OpenRestry 的开发进度，预计年底可能会支持 gRPC，可以持续关注。</li>
+<li><a href="https://traefik.io/" target="_blank" rel="noopener">Traefix</a> 对于 WebSocket、HTTP 2 和 GRPC 都提供了支持，可以作为重点测试对象。</li>
+<li><a href="https://www.getambassador.io/" target="_blank" rel="noopener">Ambassador</a> 基于 Envoy 实现，将 <strong>gRPC</strong> 和 HTTP/2 作为一等公民来进行对待，对于 gRPC 的支持应该是最好的，但是考虑到其底层强依赖于 Kubernetes，因此可以在使用 Istio 的时候进行集成比较方面，持续关注。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>特性\方案</th>
+<th>Nginx</th>
+<th>Kong（CE）</th>
+<th>Traefik</th>
+<th>Envoy（Ambassador）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>性能</td>
+<td>转发效率高</td>
+<td>转发效率高</td>
+<td><a href="http://docs.traefik.io/benchmarks" target="_blank" rel="noopener">吞吐量 Nginx 85%</a></td>
+<td>底层 C++，转发效率高</td>
+</tr>
+<tr>
+<td>配置难易度</td>
+<td>简单</td>
+<td>简单</td>
+<td>简单，与微服务对接方便</td>
+<td>简单，ServiceMesh 原生支持</td>
+</tr>
+<tr>
+<td>负载均衡机制</td>
+<td>一般</td>
+<td>可以灵活扩展</td>
+<td>会话保持和健康机制</td>
+<td>会话保持和健康机制</td>
+</tr>
+<tr>
+<td>社区活跃度</td>
+<td>高</td>
+<td>一般</td>
+<td>一般</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>功能适用性</td>
+<td>代理或者web/mail 服务器</td>
+<td>代理或者负载均衡器</td>
+<td>代理或负载均衡器</td>
+<td>负载均衡器</td>
+</tr>
+<tr>
+<td>支持平台</td>
+<td>各种平台</td>
+<td>各种平台</td>
+<td>各种平台</td>
+<td>主要是 Kubernets</td>
+</tr>
+<tr>
+<td>K8S Ingress</td>
+<td><a href="https://github.com/kubernetes/ingress-nginx" target="_blank" rel="noopener">ingress-nginx</a> 成熟度高</td>
+<td><a href="https://github.com/Kong/kubernetes-ingress-controller" target="_blank" rel="noopener">kubernetes-ingress-controller</a> 成熟度低</td>
+<td>天然支持，成熟度高</td>
+<td>天然支持，成熟度中</td>
+</tr>
+<tr>
+<td>HTTP 2支持情况</td>
+<td>支持</td>
+<td>支持</td>
+<td>支持</td>
+<td>支持</td>
+</tr>
+<tr>
+<td><strong>gRPC 代理</strong></td>
+<td><strong>支持 &gt;=1.13.10</strong></td>
+<td><strong>暂时不支持</strong></td>
+<td><strong>支持</strong></td>
+<td><strong>原生支持</strong></td>
+</tr>
+<tr>
+<td>与 ServiceMesh 集成度</td>
+<td>良好</td>
+<td>良好</td>
+<td>良好</td>
+<td>优秀，原生支持</td>
+</tr>
+</tbody>
+</table>
+<h2 id="Traefik-gRPC-代理测试"><a href="#Traefik-gRPC-代理测试" class="headerlink" title="Traefik gRPC 代理测试"></a>Traefik gRPC 代理测试</h2><p>本文以 <a href="https://traefik.io/" target="_blank" rel="noopener">traefik</a> 作为测试对象，来作为 gRPC 支持情况。完整代码库参见：<a href="https://github.com/DavadDi/go_study/tree/master/src/google.golang.org/grpc/examples" target="_blank" rel="noopener">examples</a></p>
+<p><img src="https://docs.traefik.io/img/grpc.svg" alt=""></p>
+<blockquote>
+<p>特别备注： gRPC 在 Mac 环境下测试过程中，如果将 <code>backend.local</code> 写入到 <code>/etc/hosts</code> 中，使用 gRPC Client 使用 <code>backend.local</code> 地址进行访问的时候，不能够正常解析出来地址，问题待确认。后切换到 Linux 下则无此问题。</p>
+</blockquote>
+<h3 id="gRPC-依赖准备"><a href="#gRPC-依赖准备" class="headerlink" title="gRPC 依赖准备"></a>gRPC 依赖准备</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># gRPC requires Go 1.6 or higher.</span></span><br><span class="line">$ go version</span><br><span class="line">go version go1.11</span><br><span class="line"></span><br><span class="line"><span class="comment"># Install gRPC 需要翻墙</span></span><br><span class="line">$ go get -u google.golang.org/grpc</span><br><span class="line"></span><br><span class="line"><span class="comment"># install the protoc plugin for Go</span></span><br><span class="line">$ go get -u github.com/golang/protobuf/protoc-gen-go</span><br></pre></td></tr></table></figure>
+<p>gRPC 测试样例参见 <a href="https://grpc.io/docs/quickstart/go.html" target="_blank" rel="noopener">go quickstart</a></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> <span class="variable">$GOPATH</span>/src/google.golang.org/grpc/examples/helloworld)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 启动服务端</span></span><br><span class="line">$ go run greeter_server/main.go</span><br><span class="line"></span><br><span class="line"><span class="comment"># 启动客户端</span></span><br><span class="line">$ go run greeter_client/main.go</span><br><span class="line"></span><br><span class="line"><span class="comment"># 期待能够正常工作</span></span><br></pre></td></tr></table></figure>
+<h3 id="Traefik-配置"><a href="#Traefik-配置" class="headerlink" title="Traefik 配置"></a>Traefik 配置</h3><p>traefix grpc 样例配置参考 <a href="https://docs.traefik.io/user-guide/grpc/" target="_blank" rel="noopener">user-guide</a></p>
+<blockquote>
+<p>As gRPC needs HTTP2, we need HTTPS certificates on both gRPC Server and Træfik.</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># download traefix</span></span><br><span class="line">$ wget https://github.com/containous/traefik/releases/download/v1.6.6/traefik_linux-amd64</span><br></pre></td></tr></table></figure>
+<p>生成服务端证书：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \</span><br><span class="line">-keyout ./certs/backend.key \</span><br><span class="line">-out ./certs/backend.crt \</span><br><span class="line">-subj <span class="string">"/CN=backend.local/O=backend.local"</span></span><br></pre></td></tr></table></figure>
+<p>生成客户端证书</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \</span><br><span class="line">-keyout ./certs/frontend.key \</span><br><span class="line">-out ./certs/frontend.crt \</span><br><span class="line">-subj <span class="string">"/CN=frontend.local/O=frontend.local"</span></span><br></pre></td></tr></table></figure>
+<p>修改 grpc server 和 client 添加证书支持，同时修改 client 代码的连接地址，在本地 hosts 添加以下记录：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">127.0.0.1 frontend.local</span><br><span class="line">127.0.0.1 backend.local</span><br></pre></td></tr></table></figure>
+<p>traefik.toml 配置文件样例：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">$ cat traefik.toml</span><br><span class="line"><span class="attr">defaultEntryPoints</span> = [<span class="string">"https"</span>]</span><br><span class="line"></span><br><span class="line"><span class="attr">logLevel</span> = <span class="string">"INFO"</span></span><br><span class="line"></span><br><span class="line"><span class="attr">RootCAs</span> = [ <span class="string">"../certs/backend.crt"</span> ]</span><br><span class="line"></span><br><span class="line"><span class="section">[entryPoints]</span></span><br><span class="line"><span class="section">  [entryPoints.https]</span></span><br><span class="line">  address = ":4443"</span><br><span class="line"><span class="section">    [entryPoints.https.tls]</span></span><br><span class="line"><span class="section">     [[entryPoints.https.tls.certificates]]</span></span><br><span class="line">     certFile = "../certs/frontend.crt"</span><br><span class="line">     keyFile  = "../certs/frontend.key"</span><br><span class="line"></span><br><span class="line"><span class="section">[api]</span></span><br><span class="line"></span><br><span class="line"><span class="section">[file]</span></span><br><span class="line"></span><br><span class="line"><span class="section">[backends]</span></span><br><span class="line"><span class="section">  [backends.backend1]</span></span><br><span class="line"><span class="section">    [backends.backend1.servers.server1]</span></span><br><span class="line">    url = "https://backend.local:50051"</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="section">[frontends]</span></span><br><span class="line"><span class="section">  [frontends.frontend1]</span></span><br><span class="line">  backend = "backend1"</span><br><span class="line"><span class="section">    [frontends.frontend1.routes.test_1]</span></span><br><span class="line">    rule = "Host:frontend.local"</span><br><span class="line"></span><br><span class="line"><span class="section">[traefikLog]</span></span><br><span class="line"></span><br><span class="line"><span class="section">[metrics]</span></span><br><span class="line"><span class="section">  [metrics.prometheus]</span></span><br><span class="line">    entryPoint = "traefik"</span><br></pre></td></tr></table></figure>
+<p>为方便启动，增加 <code>start.sh</code> 脚本：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ cat start.sh</span><br><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line">./traefik --configFile=traefik.toml</span><br></pre></td></tr></table></figure>
+<p><code>traefik</code> server 启动成功后可以，会启动一个 dashboard 地址，可以通过地址访问 <code>http://172.16.71.9:8080/dashboard/</code>，其中 <code>172.16.71.9</code> 为启动的 IP 地址。</p>
+<p><code>greeter_client</code> 必须使用域名访问，如果使用 IP 地址访问，会导致证书不匹配的错误：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ go run greeter_client/main.go</span><br><span class="line">2018/08/29 10:01:56 could not greet: rpc error: code = Unavailable desc = all SubConns are <span class="keyword">in</span> TransientFailure, latest connection error: connection error: desc = <span class="string">"transport: authentication handshake failed: x509: certificate is valid for backend.local, not localhost"</span></span><br><span class="line"><span class="built_in">exit</span> status 1</span><br></pre></td></tr></table></figure>
+<h3 id="gRPC-配置证书"><a href="#gRPC-配置证书" class="headerlink" title="gRPC 配置证书"></a>gRPC 配置证书</h3><p>gRPC HelloWorld 样例程序采用非证书模式，为配合 traefik 测试，需要将服务端与客户端代码增加证书支持。</p>
+<h4 id="greet-server"><a href="#greet-server" class="headerlink" title="greet_server"></a>greet_server</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Read cert and key file</span></span><br><span class="line">BackendCert, _ := ioutil.ReadFile(<span class="string">"./backend.cert"</span>)</span><br><span class="line">BackendKey, _ := ioutil.ReadFile(<span class="string">"./backend.key"</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Generate Certificate struct</span></span><br><span class="line">cert, err := tls.X509KeyPair(BackendCert, BackendKey)</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">  log.Fatalf(<span class="string">"failed to parse certificate: %v"</span>, err)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Create credentials</span></span><br><span class="line">creds := credentials.NewServerTLSFromCert(&amp;cert)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Use Credentials in gRPC server options</span></span><br><span class="line">serverOption := grpc.Creds(creds)</span><br><span class="line"><span class="keyword">var</span> s *grpc.Server = grpc.NewServer(serverOption)</span><br><span class="line"><span class="keyword">defer</span> s.Stop()</span><br><span class="line"></span><br><span class="line">pb.RegisterGreeterServer(s, &amp;server&#123;&#125;)</span><br><span class="line">err := s.Serve(lis)</span><br><span class="line"></span><br><span class="line"><span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<h4 id="greet-client"><a href="#greet-client" class="headerlink" title="greet_client"></a>greet_client</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Read cert file</span></span><br><span class="line">FrontendCert, _ := ioutil.ReadFile(<span class="string">"./frontend.cert"</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Create CertPool</span></span><br><span class="line">roots := x509.NewCertPool()</span><br><span class="line">roots.AppendCertsFromPEM(FrontendCert)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Create credentials</span></span><br><span class="line">credsClient := credentials.NewClientTLSFromCert(roots, <span class="string">""</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Dial with specific Transport (with credentials)</span></span><br><span class="line">conn, err := grpc.Dial(<span class="string">"frontend.local:4443"</span>, grpc.WithTransportCredentials(credsClient))</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">    log.Fatalf(<span class="string">"did not connect: %v"</span>, err)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">defer</span> conn.Close()</span><br><span class="line">client := pb.NewGreeterClient(conn)</span><br><span class="line"></span><br><span class="line">name := <span class="string">"World"</span></span><br><span class="line">r, err := client.SayHello(context.Background(), &amp;pb.HelloRequest&#123;Name: name&#125;)</span><br><span class="line"></span><br><span class="line"><span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<p>TODO 性能相关的数据收集</p>
+<blockquote>
+<p>mdl -r~MD013 grpc_gateway.md  验证 md 的时候去除长度限制。</p>
+</blockquote>
+<h2 id="其他-Ingress-对比图"><a href="#其他-Ingress-对比图" class="headerlink" title="其他 Ingress 对比图"></a>其他 Ingress 对比图</h2><p><img src="https://i0.wp.com/kubedex.com/wp-content/uploads/2018/09/ingresses-updated-1.png?resize=1024%2C465&amp;ssl=1" alt=""></p>
+<p>完整地址参见：<a href="https://kubedex.com/nginx-ingress-vs-kong-vs-traefik-vs-haproxy-vs-voyager-vs-contour-vs-ambassador/" target="_blank" rel="noopener">ingress</a></p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://microservices.io/patterns/apigateway.html" target="_blank" rel="noopener">Pattern: API Gateway / Backend for Front-End</a></li>
+<li><a href="https://zhaohuabing.com/2018/04/11/service-mesh-vs-api-gateway/" target="_blank" rel="noopener">Service Mesh 和 API Gateway的关系探讨</a></li>
+<li><a href="https://www.nginx.com/blog/building-microservices-using-an-api-gateway/" target="_blank" rel="noopener">Building Microservices: Using an API Gateway</a></li>
+<li><a href="https://smartbear.com/learn/api-design/api-gateways-in-microservices/" target="_blank" rel="noopener">Using an API Gateway in Your Microservices Architecture</a></li>
+<li><a href="https://github.com/vaporz/turbo" target="_blank" rel="noopener">Turbo</a> 能生成一个反向代理服务器，把HTTP请求转换为 grpc 或者 Thrift 格式的请求。  <a href="https://zhuanlan.zhihu.com/p/29350695" target="_blank" rel="noopener">grpc-gateway的替代品–Turbo</a></li>
+<li><a href="https://www.datawire.io/envoyproxy/envoy-as-api-gateway/" target="_blank" rel="noopener">Part 3: Deploying Envoy as an API Gateway for Microservices</a></li>
+<li><a href="https://medium.com/@DazWilkin/grpc-through-traefik-envoy-651bdc3b37e9" target="_blank" rel="noopener">gRPC through Traefik || Envoy</a></li>
+<li><a href="https://github.com/grpc/grpc/blob/master/doc/naming.md" target="_blank" rel="noopener">gRPC naming</a></li>
+<li><a href="https://bbengfort.github.io/programmer/2017/03/03/secure-grpc.html" target="_blank" rel="noopener">Secure gRPC with TLS/SSL</a></li>
+<li><a href="http://blog.51cto.com/devingeng/2154041" target="_blank" rel="noopener">深入玩转K8S之如何访问业务应用（Traefik-ingress配置https篇）</a></li>
+<li><a href="https://blog.csdn.net/u013066244/article/details/78725842" target="_blank" rel="noopener">OpenSSL自签发配置有多域名或ip地址的证书</a></li>
+</ol>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2018/09/01/grpc-interceptors/" title="gRPC" 之="" interceptors="">
+                    <div class="nextTitle">gRPC 之 Interceptors</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2018/08/03/serverless-openfaas/" title="Serverless" 之="" openfaas="">
+                    <div class="prevTitle">Serverless 之 OpenFaaS</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2018/09/01/grpc_gateway/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "gRPC 之 Gateway"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#Kong-CE-版本"><span class="toc-number">1.</span> <span class="toc-text">Kong CE 版本</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Kong-CE-Features"><span class="toc-number">1.1.</span> <span class="toc-text">Kong CE Features</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#OpenRestry"><span class="toc-number">1.2.</span> <span class="toc-text">OpenRestry</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Traefik"><span class="toc-number">2.</span> <span class="toc-text">Traefik</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Traefik-Features"><span class="toc-number">2.1.</span> <span class="toc-text">Traefik Features</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Ambassador-Envoy-Gateway"><span class="toc-number">3.</span> <span class="toc-text">Ambassador (Envoy Gateway)</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Ambassador-Features"><span class="toc-number">3.1.</span> <span class="toc-text">Ambassador Features</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#结论"><span class="toc-number">4.</span> <span class="toc-text">结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Traefik-gRPC-代理测试"><span class="toc-number">5.</span> <span class="toc-text">Traefik gRPC 代理测试</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#gRPC-依赖准备"><span class="toc-number">5.1.</span> <span class="toc-text">gRPC 依赖准备</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Traefik-配置"><span class="toc-number">5.2.</span> <span class="toc-text">Traefik 配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#gRPC-配置证书"><span class="toc-number">5.3.</span> <span class="toc-text">gRPC 配置证书</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#greet-server"><span class="toc-number">5.3.1.</span> <span class="toc-text">greet_server</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#greet-client"><span class="toc-number">5.3.2.</span> <span class="toc-text">greet_client</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#其他-Ingress-对比图"><span class="toc-number">6.</span> <span class="toc-text">其他 Ingress 对比图</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">7.</span> <span class="toc-text">参考</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 40 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-pilot/">istio pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-citadel/">istio citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-pilot-agent/">istio pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+
