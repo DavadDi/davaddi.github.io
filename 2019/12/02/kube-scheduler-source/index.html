@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kube-Scheduler 源码剖析 · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Kube-Scheduler 源码剖析</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Kube-Scheduler 源码剖析
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="scheduler">scheduler</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2019/12/02</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>[toc]</p>
+<h2 id="主要功能"><a href="#主要功能" class="headerlink" title="主要功能"></a>主要功能</h2><p><code>Kube-Scheduler</code> 主要工作是为需要运行的 Pod 选择合适的 Node，从阶段上讲分为两个阶段：</p>
+<ol>
+<li><p>预选 Predicates</p>
+<p>挑选出符合调度条件的 Node 列表</p>
+</li>
+<li><p>优选 Prioritizing</p>
+<p>从已经选择出来的 Node 列表中按照一定的算法选择出最优匹配的 Node，设置 Pod 对应的 NodeName </p>
+</li>
+</ol>
+<p>使用者可以使用自己定义的 config 文件，或直接使用系统提供的默认预选和优选算法；当用户可以自己通过扩展算法来实现自己的调度器；</p>
+<p><img src="https://www.do1618.com/wp-content/uploads/2019/12/scheduler-source.png" alt="image-20191202143724661"></p>
+<p>代码分析基于 v1.12.6</p>
+<h2 id="核心主流程"><a href="#核心主流程" class="headerlink" title="核心主流程"></a>核心主流程</h2><h3 id="启动"><a href="#启动" class="headerlink" title="启动"></a>启动</h3><p>k8s.io/kubernetes/cmd/kube-scheduler/scheduler.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> (</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  <span class="string">"k8s.io/kubernetes/cmd/kube-scheduler/app"</span></span><br><span class="line">)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> err := command.Execute(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/cmd/kube-scheduler/app/server.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewSchedulerCommand creates a *cobra.Command object with default parameters</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewSchedulerCommand</span><span class="params">()</span> *<span class="title">cobra</span>.<span class="title">Command</span></span> &#123;</span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	cmd := &amp;cobra.Command&#123;</span><br><span class="line">		Use: <span class="string">"kube-scheduler"</span>,</span><br><span class="line">		Long: <span class="string">`...`</span>,</span><br><span class="line">		Run: <span class="function"><span class="keyword">func</span><span class="params">(cmd *cobra.Command, args []<span class="keyword">string</span>)</span></span> &#123;</span><br><span class="line">			<span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">			stopCh := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span><br><span class="line">			<span class="keyword">if</span> err := Run(c.Complete(), stopCh); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> cmd</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Run-函数入口"><a href="#Run-函数入口" class="headerlink" title="Run() 函数入口"></a>Run() 函数入口</h3><p>k8s.io/kubernetes/cmd/kube-scheduler/app/server.go</p>
+<p>kube-scheduler 主函数在 <code>Run</code> 函数中，该函数主要的工作包括：</p>
+<ol>
+<li>调度算法的初始化</li>
+<li>启动 Informer 监听，从 Kube-APIServer 同步需要的数据</li>
+<li>开启调度的工作，调度的主函数 <code>sched.scheduleOne</code> 顾名思义就是每次串行调度一个 Pod</li>
+</ol>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Run runs the Scheduler.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Run</span><span class="params">(c schedulerserverconfig.CompletedConfig, stopCh &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span> <span class="title">error</span></span> &#123;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 注册算法 参见流程 算法初始化</span></span><br><span class="line">	algorithmprovider.ApplyFeatureGates()  </span><br><span class="line"></span><br><span class="line">  <span class="comment">// 配置初始化</span></span><br><span class="line">	schedulerConfig, err := NewSchedulerConfig(c)  </span><br><span class="line">  </span><br><span class="line">	<span class="comment">// Create the scheduler.</span></span><br><span class="line">	sched := scheduler.NewFromConfig(schedulerConfig)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// 启动 informer 监听</span></span><br><span class="line">	<span class="keyword">go</span> c.PodInformer.Informer().Run(stopCh) </span><br><span class="line">	c.InformerFactory.Start(stopCh)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Wait for all caches to sync before scheduling.</span></span><br><span class="line">	c.InformerFactory.WaitForCacheSync(stopCh)</span><br><span class="line">	controller.WaitForCacheSync(<span class="string">"scheduler"</span>, stopCh, c.PodInformer.Informer().HasSynced)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Prepare a reusable run function.</span></span><br><span class="line">	run := <span class="function"><span class="keyword">func</span><span class="params">(ctx context.Context)</span></span> &#123;</span><br><span class="line">		sched.Run()  <span class="comment">// 主入口</span></span><br><span class="line">		&lt;-ctx.Done()</span><br><span class="line">	&#125;</span><br><span class="line">	</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  </span><br><span class="line">	run(ctx)</span><br><span class="line">	<span class="keyword">return</span> fmt.Errorf(<span class="string">"finished without leader elect"</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/pkg/scheduler/scheduler.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Run begins watching and scheduling. It waits for cache to be synced, then starts a goroutine and returns immediately.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(sched *Scheduler)</span> <span class="title">Run</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> !sched.config.WaitForCacheSync() &#123;</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 主入口函数 scheduleOne </span></span><br><span class="line">	<span class="keyword">go</span> wait.Until(sched.scheduleOne, <span class="number">0</span>, sched.config.StopEverything)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="配置初始化-之-config-CompletedConfig"><a href="#配置初始化-之-config-CompletedConfig" class="headerlink" title="配置初始化-之 config.CompletedConfig"></a>配置初始化-之 config.CompletedConfig</h3><blockquote>
+<p>如果对配置初始化过程不感兴趣，可以跳过，直接看调度算法</p>
+</blockquote>
+<p>配置初始化的工作主要流程如下：</p>
+<p><code>args</code> -&gt; <code>options.Options</code> -&gt; <code>config.Config</code> -&gt; <code>config.CompleteConfig（仅包装了config.Config)</code> -&gt; <code>scheduler.Config</code> </p>
+<p>其中 包含了 <code>config.Config</code> 包含了配置  <code>config.KubeSchedulerConfiguration</code>（调度器名称、调度器算法来源、是否禁止强制调度）</p>
+<p>简略一点的路径是：</p>
+<p><code>options.Options</code> -&gt;<code>KubeSchedulerConfiguration</code> -&gt;  <code>config.CompleteConfig</code> -&gt; <code>scheduler.Config</code></p>
+<p>函数 <code>c.Complete()</code> 完成了 <code>config</code> 结构体的相关变量</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewSchedulerCommand creates a *cobra.Command object with default parameters</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewSchedulerCommand</span><span class="params">()</span> *<span class="title">cobra</span>.<span class="title">Command</span></span> &#123;</span><br><span class="line">	opts, err := options.NewOptions()</span><br><span class="line"></span><br><span class="line">	cmd := &amp;cobra.Command&#123;</span><br><span class="line">		Use: <span class="string">"kube-scheduler"</span>,</span><br><span class="line">		Long: <span class="string">``</span>,</span><br><span class="line">		Run: <span class="function"><span class="keyword">func</span><span class="params">(cmd *cobra.Command, args []<span class="keyword">string</span>)</span></span> &#123;</span><br><span class="line">			c, err := opts.Config()  <span class="comment">// 初始化配置</span></span><br><span class="line"></span><br><span class="line">			stopCh := <span class="built_in">make</span>(<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span><br><span class="line">			Run(c.Complete(), stopCh)  <span class="comment">// 完成配置返回  config.CompletedConfig 结构</span></span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> cmd</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/cmd/kube-scheduler/app/options/options.go</p>
+<p>初始化配置的函数  <code>opts.Config()</code> 主要是完成 <code>opt</code> 参数向  <code>config</code> 对象的各种初始化动作：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Config return a scheduler config object</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(o *Options)</span> <span class="title">Config</span><span class="params">()</span> <span class="params">(*schedulerappconfig.Config, error)</span></span> &#123;</span><br><span class="line">	c := &amp;schedulerappconfig.Config&#123;&#125;</span><br><span class="line">  <span class="comment">// ApplyTo 函数完成 opt 参数或者configfile 变量到 schedulerappconfig.Config&#123;&#125; 对象</span></span><br><span class="line">	<span class="keyword">if</span> err := o.ApplyTo(c); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// prepare kube clients.</span></span><br><span class="line">	client, leaderElectionClient, eventClient, err := createClients(c.ComponentConfig.ClientConnection, o.Master, c.ComponentConfig.LeaderElection.RenewDeadline.Duration)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Prepare event clients.</span></span><br><span class="line">	eventBroadcaster := record.NewBroadcaster()</span><br><span class="line">	recorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, corev1.EventSource&#123;Component: c.ComponentConfig.SchedulerName&#125;)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Set up leader election if enabled.</span></span><br><span class="line">	<span class="keyword">var</span> leaderElectionConfig *leaderelection.LeaderElectionConfig</span><br><span class="line">	<span class="keyword">if</span> c.ComponentConfig.LeaderElection.LeaderElect &#123;</span><br><span class="line">		leaderElectionConfig, err = makeLeaderElectionConfig(c.ComponentConfig.LeaderElection, leaderElectionClient, recorder)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	c.Client = client</span><br><span class="line">	c.InformerFactory = informers.NewSharedInformerFactory(client, <span class="number">0</span>)</span><br><span class="line">	c.PodInformer = factory.NewPodInformer(client, <span class="number">0</span>)</span><br><span class="line">	c.EventClient = eventClient</span><br><span class="line">	c.Recorder = recorder</span><br><span class="line">	c.Broadcaster = eventBroadcaster</span><br><span class="line">	c.LeaderElection = leaderElectionConfig</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> c, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>结构体为 <code>config.CompletedConfig</code> ，里面内嵌了 <code>config.Config</code> 结构体</p>
+<p>k8s.io/kubernetes/cmd/kube-scheduler/app/config/config.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"> <span class="keyword">type</span> completedConfig <span class="keyword">struct</span> &#123;</span><br><span class="line">   *Config</span><br><span class="line"> &#125;</span><br><span class="line"> </span><br><span class="line"> <span class="comment">// CompletedConfig same as Config, just to swap private object.</span></span><br><span class="line"> <span class="keyword">type</span> CompletedConfig <span class="keyword">struct</span> &#123;</span><br><span class="line">   <span class="comment">// Embed a private pointer that cannot be instantiated outside of this package.</span></span><br><span class="line">   <span class="comment">// 嵌入一个私有的指针，避免在包外初始化</span></span><br><span class="line">   *completedConfig</span><br><span class="line"> &#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Config has all the context to run a Scheduler</span></span><br><span class="line"> <span class="keyword">type</span> Config <span class="keyword">struct</span> &#123;</span><br><span class="line">   <span class="comment">// config is the scheduler server's configuration object.</span></span><br><span class="line">   ComponentConfig kubeschedulerconfig.KubeSchedulerConfiguration</span><br><span class="line"> </span><br><span class="line">	 <span class="comment">// 认证相关的</span></span><br><span class="line">   Authentication         apiserver.AuthenticationInfo</span><br><span class="line">   Authorization          apiserver.AuthorizationInfo</span><br><span class="line"> </span><br><span class="line">   Client          clientset.Interface <span class="comment">// k8s client</span></span><br><span class="line">   InformerFactory informers.SharedInformerFactory  <span class="comment">// infromer factory</span></span><br><span class="line">   PodInformer     coreinformers.PodInformer        <span class="comment">// pod informer</span></span><br><span class="line">   EventClient     v1core.EventsGetter</span><br><span class="line">   Recorder        record.EventRecorder</span><br><span class="line">   Broadcaster     record.EventBroadcaster</span><br><span class="line"> </span><br><span class="line">   <span class="comment">// LeaderElection is optional.</span></span><br><span class="line">   LeaderElection *leaderelection.LeaderElectionConfig</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<p>其中 <code>config.Config</code> 内嵌了 <code>KubeSchedulerConfiguration</code> 的变量，结构体定义如下</p>
+<p>k8s.io/kubernetes/pkg/scheduler/apis/config/types.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// KubeSchedulerConfiguration configures a scheduler</span></span><br><span class="line"><span class="keyword">type</span> KubeSchedulerConfiguration <span class="keyword">struct</span> &#123;</span><br><span class="line">	metav1.TypeMeta</span><br><span class="line"></span><br><span class="line">	<span class="comment">// SchedulerName is name of the scheduler, used to select which pods</span></span><br><span class="line">	<span class="comment">// will be processed by this scheduler, based on pod's "spec.SchedulerName".</span></span><br><span class="line">  <span class="comment">// 调度器的名字，用于用户选择不同的调度器</span></span><br><span class="line">	SchedulerName <span class="keyword">string</span></span><br><span class="line">  </span><br><span class="line">	<span class="comment">// AlgorithmSource specifies the scheduler algorithm source.</span></span><br><span class="line">  <span class="comment">// 指定算法的来源</span></span><br><span class="line">	AlgorithmSource SchedulerAlgorithmSource</span><br><span class="line">  </span><br><span class="line">	<span class="comment">// RequiredDuringScheduling affinity is not symmetric, but there is an implicit PreferredDuringScheduling affinity rule</span></span><br><span class="line">	<span class="comment">// corresponding to every RequiredDuringScheduling affinity rule.</span></span><br><span class="line">	<span class="comment">// HardPodAffinitySymmetricWeight represents the weight of implicit PreferredDuringScheduling affinity rule, in the range 0-100.</span></span><br><span class="line">	HardPodAffinitySymmetricWeight <span class="keyword">int32</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// LeaderElection defines the configuration of leader election client.</span></span><br><span class="line">	LeaderElection KubeSchedulerLeaderElectionConfiguration</span><br><span class="line"></span><br><span class="line">	<span class="comment">// ClientConnection specifies the kubeconfig file and client connection</span></span><br><span class="line">	<span class="comment">// settings for the proxy server to use when communicating with the apiserver.</span></span><br><span class="line">  </span><br><span class="line">	ClientConnection apimachineryconfig.ClientConnectionConfiguration</span><br><span class="line">	<span class="comment">// HealthzBindAddress is the IP address and port for the health check server to serve on,</span></span><br><span class="line">	<span class="comment">// defaulting to 0.0.0.0:10251</span></span><br><span class="line">	HealthzBindAddress <span class="keyword">string</span></span><br><span class="line">  </span><br><span class="line">	<span class="comment">// MetricsBindAddress is the IP address and port for the metrics server to</span></span><br><span class="line">	<span class="comment">// serve on, defaulting to 0.0.0.0:10251.</span></span><br><span class="line">	MetricsBindAddress <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// DisablePreemption disables the pod preemption feature.</span></span><br><span class="line">  <span class="comment">// 是否禁止强制调度</span></span><br><span class="line">	DisablePreemption <span class="keyword">bool</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 每次 Pod 调度的时候获取到整体 Node 的比例，函数 minFeasibleNodesToFind 负责处理，一般使用在</span></span><br><span class="line">  <span class="comment">// 大集群中, 低于 100 的总是返回全部 Node 进行匹配；如果 500 个 Node，设置 30，则搜索 500 * 30/100 = 150，每次搜索 150 个 Node 则停止</span></span><br><span class="line">	PercentageOfNodesToScore <span class="keyword">int32</span></span><br><span class="line"></span><br><span class="line">	BindTimeoutSeconds *<span class="keyword">int64</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>config.Complete</code> 函数针对了结构体的封装：</p>
+<p>k8s.io/kubernetes/cmd/kube-scheduler/app/config/config.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Complete fills in any fields not set that are required to have valid data. It's mutating the receiver.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Config)</span> <span class="title">Complete</span><span class="params">()</span> <span class="title">CompletedConfig</span></span> &#123;</span><br><span class="line">  cc := completedConfig&#123;c&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> c.InsecureServing != <span class="literal">nil</span> &#123;</span><br><span class="line">    c.InsecureServing.Name = <span class="string">"healthz"</span></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">if</span> c.InsecureMetricsServing != <span class="literal">nil</span> &#123;</span><br><span class="line">    c.InsecureMetricsServing.Name = <span class="string">"metrics"</span></span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> CompletedConfig&#123;&amp;cc&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="配置初始化-之-scheduler-Config"><a href="#配置初始化-之-scheduler-Config" class="headerlink" title="配置初始化-之 scheduler.Config"></a>配置初始化-之 scheduler.Config</h3><p>切换整体，回到 Run 函数的初始化函数 <code>schedulerConfig, err := NewSchedulerConfig(c)</code></p>
+<ul>
+<li><code>configFactory</code> 对应工厂模式的工厂模型，根据不同的配置和参数生成 <code>config</code>，当然事先会准备好 <code>config</code> 需要的各种数据</li>
+<li><code>config</code> 是调度器中最重要的组件，里面实现了调度的各个组件逻辑</li>
+<li><code>scheduler</code> 使用 <code>config</code> 提供的功能来完成调度</li>
+</ul>
+<p>该函数完成了 <code>config.CompletedConfig</code> 向 <code>scheduler.Config</code> 的转换和初始化：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewSchedulerConfig creates the scheduler configuration. </span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewSchedulerConfig</span><span class="params">(s schedulerserverconfig.CompletedConfig)</span> <span class="params">(*scheduler.Config, error)</span></span> &#123;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Set up the configurator which can create schedulers from configs.</span></span><br><span class="line">  <span class="comment">// 创建 configurator，用于生成各种需要的 config</span></span><br><span class="line">  <span class="comment">// 返回 configFactory， 文件定义在 k8s.io/kubernetes/pkg/scheduler/factory/factory.go</span></span><br><span class="line">  <span class="comment">//  NewConfigFactory() -&gt;  初始化各种 informer，比较重要的是 PodInformer</span></span><br><span class="line">  	<span class="comment">// unscheduled pod queue</span></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">	args.PodInformer.Informer().AddEventHandler(</span></span><br><span class="line"><span class="comment">		cache.FilteringResourceEventHandler&#123;</span></span><br><span class="line"><span class="comment">			FilterFunc: func(obj interface&#123;&#125;) bool &#123; // 用于过滤 pod.Spec.NodeName 为空等条件 Pod</span></span><br><span class="line"><span class="comment">				switch t := obj.(type) &#123;</span></span><br><span class="line"><span class="comment">				case *v1.Pod:</span></span><br><span class="line"><span class="comment">					return unassignedNonTerminatedPod(t) &amp;&amp; responsibleForPod(t, args.SchedulerName)</span></span><br><span class="line"><span class="comment">				case cache.DeletedFinalStateUnknown:</span></span><br><span class="line"><span class="comment">					if pod, ok := t.Obj.(*v1.Pod); ok &#123;</span></span><br><span class="line"><span class="comment">						return unassignedNonTerminatedPod(pod) &amp;&amp; responsibleForPod(pod, args.SchedulerName)</span></span><br><span class="line"><span class="comment">					&#125;</span></span><br><span class="line"><span class="comment">					runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod in %T", obj, c))</span></span><br><span class="line"><span class="comment">					return false</span></span><br><span class="line"><span class="comment">				default:</span></span><br><span class="line"><span class="comment">					runtime.HandleError(fmt.Errorf("unable to handle object in %T: %T", c, obj))</span></span><br><span class="line"><span class="comment">					return false</span></span><br><span class="line"><span class="comment">				&#125;</span></span><br><span class="line"><span class="comment">			&#125;,</span></span><br><span class="line"><span class="comment">			Handler: cache.ResourceEventHandlerFuncs&#123;</span></span><br><span class="line"><span class="comment">				AddFunc:    c.addPodToSchedulingQueue,</span></span><br><span class="line"><span class="comment">				UpdateFunc: c.updatePodInSchedulingQueue,</span></span><br><span class="line"><span class="comment">				DeleteFunc: c.deletePodFromSchedulingQueue,</span></span><br><span class="line"><span class="comment">			&#125;,</span></span><br><span class="line"><span class="comment">		&#125;,</span></span><br><span class="line"><span class="comment">	)</span></span><br><span class="line"><span class="comment">	*/</span></span><br><span class="line">	configurator := factory.NewConfigFactory(&amp;factory.ConfigFactoryArgs&#123;</span><br><span class="line">		SchedulerName:    s.ComponentConfig.SchedulerName,</span><br><span class="line">		Client:           s.Client,</span><br><span class="line">		NodeInformer:     s.InformerFactory.Core().V1().Nodes(),</span><br><span class="line">		PodInformer:      s.PodInformer,</span><br><span class="line">		PvInformer:       s.InformerFactory.Core().V1().PersistentVolumes(),</span><br><span class="line">		PvcInformer:      s.InformerFactory.Core().V1().PersistentVolumeClaims(),</span><br><span class="line">		ReplicationControllerInformer:  s.InformerFactory.Core().V1().ReplicationControllers(),</span><br><span class="line">		ReplicaSetInformer:      s.InformerFactory.Apps().V1().ReplicaSets(),</span><br><span class="line">		StatefulSetInformer:     s.InformerFactory.Apps().V1().StatefulSets(),</span><br><span class="line">		ServiceInformer:         s.InformerFactory.Core().V1().Services(),</span><br><span class="line">		PdbInformer:              s.InformerFactory.Policy().V1beta1().PodDisruptionBudgets(),</span><br><span class="line">		StorageClassInformer:           storageClassInformer,</span><br><span class="line">		HardPodAffinitySymmetricWeight: s.ComponentConfig.HardPodAffinitySymmetricWeight,</span><br><span class="line">		EnableEquivalenceClassCache:    utilfeature.DefaultFeatureGate.Enabled(features.EnableEquivalenceClassCache),</span><br><span class="line">		DisablePreemption:              s.ComponentConfig.DisablePreemption,</span><br><span class="line">		PercentageOfNodesToScore:       s.ComponentConfig.PercentageOfNodesToScore,</span><br><span class="line">		BindTimeoutSeconds:             *s.ComponentConfig.BindTimeoutSeconds,</span><br><span class="line">	&#125;)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// https://kubernetes.io/docs/reference/command-line-tools-reference/kube-scheduler/</span></span><br><span class="line">	source := s.ComponentConfig.AlgorithmSource  <span class="comment">// KubeSchedulerConfiguration`</span></span><br><span class="line">	<span class="keyword">var</span> config *scheduler.Config</span><br><span class="line">	<span class="keyword">switch</span> &#123;</span><br><span class="line">    <span class="comment">// 创建调度算法有两种方式  Provider 和 用户指定的 Ploicy 文件（文件或Configmap)</span></span><br><span class="line">  <span class="comment">// --algorithm-provider string</span></span><br><span class="line">  <span class="comment">// DEPRECATED: the scheduling algorithm provider to use, one of: </span></span><br><span class="line">  <span class="comment">// ClusterAutoscalerProvider | DefaultProvider</span></span><br><span class="line">	<span class="keyword">case</span> source.Provider != <span class="literal">nil</span>:</span><br><span class="line">		<span class="comment">// Create the config from a named algorithm provider.</span></span><br><span class="line">    <span class="comment">// 使用前面创建的 configurator 创建命名的算法 provider 配置</span></span><br><span class="line">    <span class="comment">// ClusterAutoscalerProvider | DefaultProvider</span></span><br><span class="line">		sc, err := configurator.CreateFromProvider(*source.Provider)</span><br><span class="line">		config = sc</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// --policy-config-file string</span></span><br><span class="line">  <span class="comment">//DEPRECATED: file with scheduler policy configuration. This file is used if policy ConfigMap is not provided or --use-legacy-policy-config=true</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> source.Policy != <span class="literal">nil</span>:</span><br><span class="line">		<span class="comment">// Create the config from a user specified policy source.</span></span><br><span class="line">		policy := &amp;schedulerapi.Policy&#123;&#125;</span><br><span class="line">		<span class="keyword">switch</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> source.Policy.File != <span class="literal">nil</span>:</span><br><span class="line">			<span class="comment">// Use a policy serialized in a file.</span></span><br><span class="line">			policyFile := source.Policy.File.Path</span><br><span class="line">			data, err := ioutil.ReadFile(policyFile)</span><br><span class="line">      </span><br><span class="line">			err = runtime.DecodeInto(latestschedulerapi.Codec, []<span class="keyword">byte</span>(data), policy)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 从 configmap 初始化</span></span><br><span class="line">		<span class="keyword">case</span> source.Policy.ConfigMap != <span class="literal">nil</span>:</span><br><span class="line">		   <span class="comment">// 处理流程同上</span></span><br><span class="line">    &#125;</span><br><span class="line">		</span><br><span class="line">		sc, err := configurator.CreateFromConfig(*policy)   </span><br><span class="line">		config = sc</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, fmt.Errorf(<span class="string">"unsupported algorithm source: %v"</span>, source)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Additional tweaks to the config produced by the configurator.</span></span><br><span class="line">	config.Recorder = s.Recorder</span><br><span class="line"></span><br><span class="line">	config.DisablePreemption = s.ComponentConfig.DisablePreemption</span><br><span class="line">	<span class="keyword">return</span> config, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>无论是函数 <code>CreateFromProvider</code> 还是 <code>CreateFromConfig</code> 底层都是调用 函数 <code>func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, extenders []algorithm.SchedulerExtender) (*scheduler.Config, error)</code></p>
+<p>该函数输入  <code>predicateKeys</code>/<code>priorityKeys</code>/<code>SchedulerExtender</code>，最终返回 <code>scheduler.Config</code>对象</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Creates a scheduler from a set of registered fit predicate keys and priority keys.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *configFactory)</span> <span class="title">CreateFromKeys</span><span class="params">(predicateKeys, priorityKeys sets.String, extenders []algorithm.SchedulerExtender)</span> <span class="params">(*scheduler.Config, error)</span></span> &#123;</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">	predicateFuncs, err := c.GetPredicates(predicateKeys)</span><br><span class="line">	priorityConfigs, err := c.GetPriorityFunctionConfigs(priorityKeys)</span><br><span class="line">	priorityMetaProducer, err := c.GetPriorityMetadataProducer()</span><br><span class="line">	predicateMetaProducer, err := c.GetPredicateMetadataProducer()</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Init equivalence class cache</span></span><br><span class="line">	<span class="keyword">if</span> c.enableEquivalenceClassCache &#123;</span><br><span class="line">		c.equivalencePodCache = equivalence.NewCache()</span><br><span class="line">		glog.Info(<span class="string">"Created equivalence class cache"</span>)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 完成真正算法的初始化</span></span><br><span class="line">	algo := core.NewGenericScheduler(</span><br><span class="line">		c.schedulerCache,</span><br><span class="line">		c.equivalencePodCache,</span><br><span class="line">		c.podQueue,</span><br><span class="line">		predicateFuncs,</span><br><span class="line">		predicateMetaProducer,</span><br><span class="line">		priorityConfigs,</span><br><span class="line">		priorityMetaProducer,</span><br><span class="line">		extenders,</span><br><span class="line">		c.volumeBinder,</span><br><span class="line">		c.pVCLister,</span><br><span class="line">		c.alwaysCheckAllPredicates,</span><br><span class="line">		c.disablePreemption,</span><br><span class="line">		c.percentageOfNodesToScore,</span><br><span class="line">	)</span><br><span class="line"></span><br><span class="line">	podBackoff := util.CreateDefaultPodBackoff()</span><br><span class="line">	<span class="keyword">return</span> &amp;scheduler.Config&#123;</span><br><span class="line">		SchedulerCache: c.schedulerCache,</span><br><span class="line">		Ecache:         c.equivalencePodCache,</span><br><span class="line">		<span class="comment">// The scheduler only needs to consider schedulable nodes.</span></span><br><span class="line">		NodeLister:          &amp;nodeLister&#123;c.nodeLister&#125;,</span><br><span class="line">		Algorithm:           algo, <span class="comment">// 设置调度的算法</span></span><br><span class="line">		GetBinder:           c.getBinderFunc(extenders),</span><br><span class="line">		PodConditionUpdater: &amp;podConditionUpdater&#123;c.client&#125;,</span><br><span class="line">		PodPreemptor:        &amp;podPreemptor&#123;c.client&#125;,</span><br><span class="line">		WaitForCacheSync: <span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">			<span class="keyword">return</span> cache.WaitForCacheSync(c.StopEverything, c.scheduledPodsHasSynced)</span><br><span class="line">		&#125;,</span><br><span class="line">		NextPod: <span class="function"><span class="keyword">func</span><span class="params">()</span> *<span class="title">v1</span>.<span class="title">Pod</span></span> &#123; <span class="comment">// 设定 NextPod d的</span></span><br><span class="line">			<span class="keyword">return</span> c.getNextPod()</span><br><span class="line">		&#125;,</span><br><span class="line">		Error:           c.MakeDefaultErrorFunc(podBackoff, c.podQueue),</span><br><span class="line">		StopEverything:  c.StopEverything,</span><br><span class="line">		VolumeBinder:    c.volumeBinder,</span><br><span class="line">		SchedulingQueue: c.podQueue,</span><br><span class="line">	&#125;, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>到此完成了 <code>scheduler.Config</code> 的核心数据的初始化，特别是调度算法  <code>Algorithm:algo</code></p>
+<h3 id="scheduleOne"><a href="#scheduleOne" class="headerlink" title="scheduleOne"></a>scheduleOne</h3><p>k8s.io/kubernetes/pkg/scheduler/scheduler.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// scheduleOne does the entire scheduling workflow for a single pod.  It is serialized on the scheduling algorithm's host fitting.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(sched *Scheduler)</span> <span class="title">scheduleOne</span><span class="params">()</span></span> &#123;</span><br><span class="line">  <span class="comment">// 从队列中取出待调度的 Pod，最终调用的函数为 configFactory.getNextPod()</span></span><br><span class="line">	pod := sched.config.NextPod()</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// 检查是否是被删除的，如果是则跳过</span></span><br><span class="line">  </span><br><span class="line">	<span class="comment">// Synchronously attempt to find a fit for the pod.</span></span><br><span class="line">	start := time.Now()</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// 获取待调度 Pod 匹配的主机名</span></span><br><span class="line">	suggestedHost, err := sched.schedule(pod)  <span class="comment">// 见后续分析</span></span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// schedule() 可能因为没有满足调度的 Node 而失败，后续进行 preempt,</span></span><br><span class="line">		<span class="keyword">if</span> fitError, ok := err.(*core.FitError); ok &#123;</span><br><span class="line">			preemptionStartTime := time.Now()</span><br><span class="line">			sched.preempt(pod, fitError)</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.</span></span><br><span class="line">	<span class="comment">// This allows us to keep scheduling without waiting on binding to occur.</span></span><br><span class="line">	assumedPod := pod.DeepCopy()</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 判断是否需要VolumeScheduling特性</span></span><br><span class="line">	<span class="comment">// Assume volumes first before assuming the pod. If all volumes are completely bound, then allBound is true and binding will be skipped. Otherwise, binding of volumes is started after the pod is assumed, but before pod binding. This function modifies 'assumedPod' if volume binding is required.</span></span><br><span class="line">	allBound, err := sched.assumeVolumes(assumedPod, suggestedHost)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// assume modifies `assumedPod` by setting NodeName=suggestedHost</span></span><br><span class="line">  <span class="comment">// Pod 对应的 NodeName 写上主机名，存入缓存</span></span><br><span class="line">	err = sched.assume(assumedPod, suggestedHost)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// bind the pod to its host asynchronously (we can do this b/c of the assumption step above).</span></span><br><span class="line">  <span class="comment">// 请求apiserver，异步处理最终的绑定，写入到etcd</span></span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="comment">// Bind volumes first before Pod</span></span><br><span class="line">		<span class="keyword">if</span> !allBound &#123;</span><br><span class="line">			err = sched.bindVolumes(assumedPod)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		err := sched.bind(assumedPod, &amp;v1.Binding&#123;</span><br><span class="line">			ObjectMeta: metav1.ObjectMeta&#123;Namespace: assumedPod.Namespace, Name: assumedPod.Name, UID: assumedPod.UID&#125;,</span><br><span class="line">			Target: v1.ObjectReference&#123;</span><br><span class="line">				Kind: <span class="string">"Node"</span>,</span><br><span class="line">				Name: suggestedHost,</span><br><span class="line">			&#125;,</span><br><span class="line">		&#125;)</span><br><span class="line">		metrics.E2eSchedulingLatency.Observe(metrics.SinceInMicroseconds(start))</span><br><span class="line">	&#125;()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// schedule implements the scheduling algorithm and returns the suggested host.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(sched *Scheduler)</span> <span class="title">schedule</span><span class="params">(pod *v1.Pod)</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> &#123;</span><br><span class="line">  <span class="comment">// 调用算法提供的调度器进行调度，为 GenericScheduler</span></span><br><span class="line">	host, err := sched.config.Algorithm.Schedule(pod, sched.config.NodeLister)</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// sched.config.Algorithm = core.NewGenericScheduler()</span></span><br><span class="line"><span class="comment">// k8s.io/kubernetes/pkg/scheduler/factory/factory.go</span></span><br><span class="line"><span class="comment">// 初始化过程参见 func (c *configFactory) CreateFromKeys()&#123;...&#125;</span></span><br><span class="line"><span class="comment">// </span></span><br><span class="line"><span class="comment">// k8s.io/kubernetes/pkg/scheduler/core/generic_scheduler.go</span></span><br><span class="line"><span class="comment">// NewGenericScheduler creates a genericScheduler object.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewGenericScheduler</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">	cache schedulercache.Cache,</span></span></span><br><span class="line"><span class="function"><span class="params">	eCache *equivalence.Cache,</span></span></span><br><span class="line"><span class="function"><span class="params">	podQueue SchedulingQueue,</span></span></span><br><span class="line"><span class="function"><span class="params">	predicates <span class="keyword">map</span>[<span class="keyword">string</span>]algorithm.FitPredicate,</span></span></span><br><span class="line"><span class="function"><span class="params">	predicateMetaProducer algorithm.PredicateMetadataProducer,</span></span></span><br><span class="line"><span class="function"><span class="params">	prioritizers []algorithm.PriorityConfig,</span></span></span><br><span class="line"><span class="function"><span class="params">	priorityMetaProducer algorithm.PriorityMetadataProducer,</span></span></span><br><span class="line"><span class="function"><span class="params">	extenders []algorithm.SchedulerExtender,</span></span></span><br><span class="line"><span class="function"><span class="params">	volumeBinder *volumebinder.VolumeBinder,</span></span></span><br><span class="line"><span class="function"><span class="params">	pvcLister corelisters.PersistentVolumeClaimLister,</span></span></span><br><span class="line"><span class="function"><span class="params">	alwaysCheckAllPredicates <span class="keyword">bool</span>,</span></span></span><br><span class="line"><span class="function"><span class="params">	disablePreemption <span class="keyword">bool</span>,</span></span></span><br><span class="line"><span class="function"><span class="params">	percentageOfNodesToScore <span class="keyword">int32</span>,</span></span></span><br><span class="line"><span class="function"><span class="params">)</span> <span class="title">algorithm</span>.<span class="title">ScheduleAlgorithm</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> &amp;genericScheduler&#123;</span><br><span class="line">		cache:                    cache,</span><br><span class="line">		equivalenceCache:         eCache,</span><br><span class="line">		schedulingQueue:          podQueue,</span><br><span class="line">		predicates:               predicates,</span><br><span class="line">		predicateMetaProducer:    predicateMetaProducer,</span><br><span class="line">		prioritizers:             prioritizers,</span><br><span class="line">		priorityMetaProducer:     priorityMetaProducer,</span><br><span class="line">		extenders:                extenders,</span><br><span class="line">		cachedNodeInfoMap:        <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>]*schedulercache.NodeInfo),</span><br><span class="line">		volumeBinder:             volumeBinder,</span><br><span class="line">		pvcLister:                pvcLister,</span><br><span class="line">		alwaysCheckAllPredicates: alwaysCheckAllPredicates,</span><br><span class="line">		disablePreemption:        disablePreemption,</span><br><span class="line">		percentageOfNodesToScore: percentageOfNodesToScore,</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/pkg/scheduler/core/generic_scheduler.go</p>
+<p>最终完成预选和优选的最终处理的地方，还是通过调用 genericScheduler:Schedule 函数完成</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Schedule tries to schedule the given pod to one of the nodes in the node list.</span></span><br><span class="line"><span class="comment">// If it succeeds, it will return the name of the node.</span></span><br><span class="line"><span class="comment">// If it fails, it will return a FitError error with reasons.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(g *genericScheduler)</span> <span class="title">Schedule</span><span class="params">(pod *v1.Pod, nodeLister algorithm.NodeLister)</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> &#123;</span><br><span class="line"></span><br><span class="line">	nodes, err := nodeLister.List()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Used for all fit and priority funcs.</span></span><br><span class="line">	err = g.cache.UpdateNodeNameToInfoMap(g.cachedNodeInfoMap)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 1. 预选机器列表，获取到 filteredNodes 列表</span></span><br><span class="line">  <span class="comment">// 1.1 如果没有配置预选算法，则直接返回全部 Node 列表</span></span><br><span class="line">  <span class="comment">// 1.2 如果配置了预选算法，则对多个 Node 调用 checkNode 的方法，检查 Pod 是否可以调度到该 Node</span></span><br><span class="line">  <span class="comment">// 1.3 预选筛选之后，如果有扩展算法，则继续匹配筛选，返回最终匹配的 Node 列表</span></span><br><span class="line">	filteredNodes, failedPredicateMap, err := g.findNodesThatFit(pod, nodes)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 2. 从预选的机器列表中获取优选机器列表</span></span><br><span class="line">	metaPrioritiesInterface := g.priorityMetaProducer(pod, g.cachedNodeInfoMap)</span><br><span class="line">  </span><br><span class="line">	priorityList, err := PrioritizeNodes(pod, g.cachedNodeInfoMap, metaPrioritiesInterface, g.prioritizers, filteredNodes, g.extenders)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 选择 Scores 最高的并返回</span></span><br><span class="line">	<span class="keyword">return</span> g.selectHost(priorityList)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="预选函数主流程"><a href="#预选函数主流程" class="headerlink" title="预选函数主流程"></a>预选函数主流程</h3><p>k8s.io/kubernetes/pkg/scheduler/core/generic_scheduler.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Filters the nodes to find the ones that fit based on the given predicate functions</span></span><br><span class="line"><span class="comment">// Each node is passed through the predicate functions to determine if it is a fit</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(g *genericScheduler)</span> <span class="title">findNodesThatFit</span><span class="params">(pod *v1.Pod, nodes []*v1.Node)</span> <span class="params">([]*v1.Node, FailedPredicateMap, error)</span></span> &#123;</span><br><span class="line">	<span class="keyword">var</span> filtered []*v1.Node</span><br><span class="line">	failedPredicateMap := FailedPredicateMap&#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 如果没有预选算法，则返回全部机器列表</span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(g.predicates) == <span class="number">0</span> &#123;</span><br><span class="line">		filtered = nodes</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		allNodes := <span class="keyword">int32</span>(g.cache.NodeTree().NumNodes)</span><br><span class="line">    <span class="comment">// 保证一次性不用返回过多的Node数量，避免数组过大，当前有个硬编码 100， 100 以内一般全部返回，否则</span></span><br><span class="line">    <span class="comment">// 按照 percentageOfNodesToScore 比例设置每次返回集群中多少个节点返回，以提升调度性能</span></span><br><span class="line">    <span class="comment">// percentageOfNodesToScore 为 0或者大于100，则返回集群全部 Node</span></span><br><span class="line">		numNodesToFind := g.numFeasibleNodesToFind(allNodes)</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Create filtered list with enough space to avoid growing it</span></span><br><span class="line">		<span class="comment">// and allow assigning.</span></span><br><span class="line">		filtered = <span class="built_in">make</span>([]*v1.Node, numNodesToFind)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 用于检测 Pod 是否可以调度到 Node 的检查函数</span></span><br><span class="line">		checkNode := <span class="function"><span class="keyword">func</span><span class="params">(i <span class="keyword">int</span>)</span></span> &#123;</span><br><span class="line">			<span class="keyword">var</span> nodeCache *equivalence.NodeCache</span><br><span class="line">			nodeName := g.cache.NodeTree().Next()</span><br><span class="line">      </span><br><span class="line">			fits, failedPredicates, err := podFitsOnNode(</span><br><span class="line">				pod,</span><br><span class="line">				meta,</span><br><span class="line">				g.cachedNodeInfoMap[nodeName],</span><br><span class="line">				g.predicates,</span><br><span class="line">				g.cache,</span><br><span class="line">				nodeCache,</span><br><span class="line">				g.schedulingQueue,</span><br><span class="line">				g.alwaysCheckAllPredicates,</span><br><span class="line">				equivClass,</span><br><span class="line">			)</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> fits &#123;</span><br><span class="line">				length := atomic.AddInt32(&amp;filteredLen, <span class="number">1</span>)</span><br><span class="line">				<span class="keyword">if</span> length &gt; numNodesToFind &#123;</span><br><span class="line">					cancel()</span><br><span class="line">					atomic.AddInt32(&amp;filteredLen, <span class="number">-1</span>)</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					filtered[length<span class="number">-1</span>] = g.cachedNodeInfoMap[nodeName].Node()</span><br><span class="line">				&#125;</span><br><span class="line">			&#125; </span><br><span class="line">      </span><br><span class="line">      <span class="comment">// ...</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Stops searching for more nodes once the configured number of feasible nodes</span></span><br><span class="line">		<span class="comment">// are found.</span></span><br><span class="line">		workqueue.ParallelizeUntil(ctx, <span class="number">16</span>, <span class="keyword">int</span>(allNodes), checkNode)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果配置了 extender 算法，则使用扩展算法继续过滤</span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(filtered) &gt; <span class="number">0</span> &amp;&amp; <span class="built_in">len</span>(g.extenders) != <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">for</span> _, extender := <span class="keyword">range</span> g.extenders &#123;</span><br><span class="line">			filteredList, failedMap, err := extender.Filter(pod, filtered, g.cachedNodeInfoMap)</span><br><span class="line"></span><br><span class="line">			<span class="comment">// ...</span></span><br><span class="line">			filtered = filteredList</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> filtered, failedPredicateMap, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// podFitsOnNode checks whether a node given by NodeInfo satisfies the given predicate functions.</span></span><br><span class="line"><span class="comment">// For given pod, podFitsOnNode will check if any equivalent pod exists and try to reuse its cached</span></span><br><span class="line"><span class="comment">// predicate results as possible.</span></span><br><span class="line"><span class="comment">// This function is called from two different places: Schedule and Preempt.</span></span><br><span class="line"><span class="comment">// When it is called from Schedule, we want to test whether the pod is schedulable</span></span><br><span class="line"><span class="comment">// on the node with all the existing pods on the node plus higher and equal priority</span></span><br><span class="line"><span class="comment">// pods nominated to run on the node.</span></span><br><span class="line"><span class="comment">// When it is called from Preempt, we should remove the victims of preemption and</span></span><br><span class="line"><span class="comment">// add the nominated pods. Removal of the victims is done by SelectVictimsOnNode().</span></span><br><span class="line"><span class="comment">// It removes victims from meta and NodeInfo before calling this function.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">podFitsOnNode</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">	pod *v1.Pod,</span></span></span><br><span class="line"><span class="function"><span class="params">	meta algorithm.PredicateMetadata,</span></span></span><br><span class="line"><span class="function"><span class="params">	info *schedulercache.NodeInfo,</span></span></span><br><span class="line"><span class="function"><span class="params">	predicateFuncs <span class="keyword">map</span>[<span class="keyword">string</span>]algorithm.FitPredicate,</span></span></span><br><span class="line"><span class="function"><span class="params">	cache schedulercache.Cache,</span></span></span><br><span class="line"><span class="function"><span class="params">	nodeCache *equivalence.NodeCache,</span></span></span><br><span class="line"><span class="function"><span class="params">	queue SchedulingQueue,</span></span></span><br><span class="line"><span class="function"><span class="params">	alwaysCheckAllPredicates <span class="keyword">bool</span>,</span></span></span><br><span class="line"><span class="function"><span class="params">	equivClass *equivalence.Class,</span></span></span><br><span class="line"><span class="function"><span class="params">)</span> <span class="params">(<span class="keyword">bool</span>, []algorithm.PredicateFailureReason, error)</span></span> &#123;</span><br><span class="line">	<span class="keyword">var</span> (</span><br><span class="line">		eCacheAvailable  <span class="keyword">bool</span></span><br><span class="line">		failedPredicates []algorithm.PredicateFailureReason</span><br><span class="line">	)</span><br><span class="line"></span><br><span class="line">	podsAdded := <span class="literal">false</span></span><br><span class="line">	<span class="comment">// We run predicates twice in some cases. If the node has greater or equal priority</span></span><br><span class="line">	<span class="comment">// nominated pods, we run them when those pods are added to meta and nodeInfo.</span></span><br><span class="line">	<span class="comment">// If all predicates succeed in this pass, we run them again when these</span></span><br><span class="line">	<span class="comment">// nominated pods are not added. This second pass is necessary because some</span></span><br><span class="line">	<span class="comment">// predicates such as inter-pod affinity may not pass without the nominated pods.</span></span><br><span class="line">	<span class="comment">// If there are no nominated pods for the node or if the first run of the</span></span><br><span class="line">	<span class="comment">// predicates fail, we don't run the second pass.</span></span><br><span class="line">	<span class="comment">// We consider only equal or higher priority pods in the first pass, because</span></span><br><span class="line">	<span class="comment">// those are the current "pod" must yield to them and not take a space opened</span></span><br><span class="line">	<span class="comment">// for running them. It is ok if the current "pod" take resources freed for</span></span><br><span class="line">	<span class="comment">// lower priority pods.</span></span><br><span class="line">	<span class="comment">// Requiring that the new pod is schedulable in both circumstances ensures that</span></span><br><span class="line">	<span class="comment">// we are making a conservative decision: predicates like resources and inter-pod</span></span><br><span class="line">	<span class="comment">// anti-affinity are more likely to fail when the nominated pods are treated</span></span><br><span class="line">	<span class="comment">// as running, while predicates like pod affinity are more likely to fail when</span></span><br><span class="line">	<span class="comment">// the nominated pods are treated as not running. We can't just assume the</span></span><br><span class="line">	<span class="comment">// nominated pods are running because they are not running right now and in fact,</span></span><br><span class="line">	<span class="comment">// they may end up getting scheduled to a different node.</span></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt; <span class="number">2</span>; i++ &#123;</span><br><span class="line">		metaToUse := meta</span><br><span class="line">		nodeInfoToUse := info</span><br><span class="line">    <span class="comment">// 第一次调度，根据NominatedPods更新meta和nodeInfo信息，pod根据更新后的信息去预选</span></span><br><span class="line">		<span class="comment">// 第二次调度，meta和nodeInfo信息不变，保证pod不完全依赖于NominatedPods（主要考虑到pod亲和性之类的）</span></span><br><span class="line">		<span class="keyword">if</span> i == <span class="number">0</span> &#123;</span><br><span class="line">			podsAdded, metaToUse, nodeInfoToUse = addNominatedPods(pod, meta, info, queue)</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> !podsAdded || <span class="built_in">len</span>(failedPredicates) != <span class="number">0</span> &#123;</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// Bypass eCache if node has any nominated pods.</span></span><br><span class="line">		<span class="comment">// TODO(bsalamat): consider using eCache and adding proper eCache invalidations</span></span><br><span class="line">		<span class="comment">// when pods are nominated or their nominations change.</span></span><br><span class="line">		eCacheAvailable = equivClass != <span class="literal">nil</span> &amp;&amp; nodeCache != <span class="literal">nil</span> &amp;&amp; !podsAdded</span><br><span class="line">		<span class="keyword">for</span> _, predicateKey := <span class="keyword">range</span> predicates.Ordering() &#123;</span><br><span class="line">			<span class="keyword">var</span> (</span><br><span class="line">				fit     <span class="keyword">bool</span></span><br><span class="line">				reasons []algorithm.PredicateFailureReason</span><br><span class="line">				err     error</span><br><span class="line">			)</span><br><span class="line">			</span><br><span class="line">			<span class="keyword">if</span> predicate, exist := predicateFuncs[predicateKey]; exist &#123;</span><br><span class="line">				<span class="keyword">if</span> eCacheAvailable &#123;</span><br><span class="line">					fit, reasons, err = nodeCache.RunPredicate(predicate, predicateKey, pod, metaToUse, nodeInfoToUse, equivClass, cache)</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					fit, reasons, err = predicate(pod, metaToUse, nodeInfoToUse)</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">				<span class="keyword">if</span> !fit &#123;</span><br><span class="line">					<span class="comment">// eCache is available and valid, and predicates result is unfit, record the fail reasons</span></span><br><span class="line">					failedPredicates = <span class="built_in">append</span>(failedPredicates, reasons...)</span><br><span class="line">					<span class="comment">// if alwaysCheckAllPredicates is false, short circuit all predicates when one predicate fails.</span></span><br><span class="line"></span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">len</span>(failedPredicates) == <span class="number">0</span>, failedPredicates, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="优选函数主流程"><a href="#优选函数主流程" class="headerlink" title="优选函数主流程"></a>优选函数主流程</h3><p>使用与预选类似的多任务同步调用方式，采用 MapReduce的思想，Map 根据不同的优选算法获取对某一 Node 的值，根据 Reduce 统计最终的结果。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// PrioritizeNodes prioritizes the nodes by running the individual priority functions in parallel.</span></span><br><span class="line"><span class="comment">// Each priority function is expected to set a score of 0-10</span></span><br><span class="line"><span class="comment">// 0 is the lowest priority score (least preferred node) and 10 is the highest</span></span><br><span class="line"><span class="comment">// Each priority function can also have its own weight</span></span><br><span class="line"><span class="comment">// The node scores returned by the priority function are multiplied by the weights to get weighted scores</span></span><br><span class="line"><span class="comment">// All scores are finally combined (added) to get the total weighted scores of all nodes</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">PrioritizeNodes</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">	pod *v1.Pod,</span></span></span><br><span class="line"><span class="function"><span class="params">	nodeNameToInfo <span class="keyword">map</span>[<span class="keyword">string</span>]*schedulercache.NodeInfo,</span></span></span><br><span class="line"><span class="function"><span class="params">	meta <span class="keyword">interface</span>&#123;&#125;,</span></span></span><br><span class="line"><span class="function"><span class="params">	priorityConfigs []algorithm.PriorityConfig,</span></span></span><br><span class="line"><span class="function"><span class="params">	nodes []*v1.Node,</span></span></span><br><span class="line"><span class="function"><span class="params">	extenders []algorithm.SchedulerExtender,</span></span></span><br><span class="line"><span class="function"><span class="params">)</span> <span class="params">(schedulerapi.HostPriorityList, error)</span></span> &#123;</span><br><span class="line">	<span class="comment">// If no priority configs are provided, then the EqualPriority function is applied</span></span><br><span class="line">	<span class="comment">// This is required to generate the priority list in the required format</span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(priorityConfigs) == <span class="number">0</span> &amp;&amp; <span class="built_in">len</span>(extenders) == <span class="number">0</span> &#123;</span><br><span class="line">		result := <span class="built_in">make</span>(schedulerapi.HostPriorityList, <span class="number">0</span>, <span class="built_in">len</span>(nodes))</span><br><span class="line">		<span class="keyword">for</span> i := <span class="keyword">range</span> nodes &#123;</span><br><span class="line">			hostPriority, err := EqualPriorityMap(pod, meta, nodeNameToInfo[nodes[i].Name])</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">			&#125;</span><br><span class="line">			result = <span class="built_in">append</span>(result, hostPriority)</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> result, <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">var</span> (</span><br><span class="line">		mu   = sync.Mutex&#123;&#125;</span><br><span class="line">		wg   = sync.WaitGroup&#123;&#125;</span><br><span class="line">		errs []error</span><br><span class="line">	)</span><br><span class="line"></span><br><span class="line">	results := <span class="built_in">make</span>([]schedulerapi.HostPriorityList, <span class="built_in">len</span>(priorityConfigs), <span class="built_in">len</span>(priorityConfigs))</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> i, priorityConfig := <span class="keyword">range</span> priorityConfigs &#123;</span><br><span class="line">		<span class="keyword">if</span> priorityConfig.Function != <span class="literal">nil</span> &#123;</span><br><span class="line">			wg.Add(<span class="number">1</span>)</span><br><span class="line">			<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">(index <span class="keyword">int</span>, config algorithm.PriorityConfig)</span></span> &#123;</span><br><span class="line">				<span class="keyword">defer</span> wg.Done()</span><br><span class="line">				<span class="keyword">var</span> err error</span><br><span class="line">				results[index], err = config.Function(pod, nodeNameToInfo, nodes)</span><br><span class="line">				<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">					appendError(err)</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;(i, priorityConfig)</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			results[i] = <span class="built_in">make</span>(schedulerapi.HostPriorityList, <span class="built_in">len</span>(nodes))</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	processNode := <span class="function"><span class="keyword">func</span><span class="params">(index <span class="keyword">int</span>)</span></span> &#123;</span><br><span class="line">		nodeInfo := nodeNameToInfo[nodes[index].Name]</span><br><span class="line">		<span class="keyword">var</span> err error</span><br><span class="line">		<span class="keyword">for</span> i := <span class="keyword">range</span> priorityConfigs &#123;</span><br><span class="line">      <span class="comment">// 使用 map 函数计算过程数据</span></span><br><span class="line">			results[i][index], err = priorityConfigs[i].Map(pod, meta, nodeInfo)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	workqueue.Parallelize(<span class="number">16</span>, <span class="built_in">len</span>(nodes), processNode)</span><br><span class="line">	<span class="keyword">for</span> i, priorityConfig := <span class="keyword">range</span> priorityConfigs &#123;</span><br><span class="line">		wg.Add(<span class="number">1</span>)</span><br><span class="line">		<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">(index <span class="keyword">int</span>, config algorithm.PriorityConfig)</span></span> &#123;</span><br><span class="line">      <span class="comment">// 使用 reduce 函数结算结果</span></span><br><span class="line">			<span class="keyword">if</span> err := config.Reduce(pod, meta, nodeNameToInfo, results[index]); err != <span class="literal">nil</span> &#123;</span><br><span class="line">				appendError(err)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;(i, priorityConfig)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Wait for all computations to be finished.</span></span><br><span class="line">	wg.Wait()</span><br><span class="line">	<span class="comment">// Summarize all scores.</span></span><br><span class="line">	result := <span class="built_in">make</span>(schedulerapi.HostPriorityList, <span class="number">0</span>, <span class="built_in">len</span>(nodes))</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> i := <span class="keyword">range</span> nodes &#123;</span><br><span class="line">		result = <span class="built_in">append</span>(result, schedulerapi.HostPriority&#123;Host: nodes[i].Name, Score: <span class="number">0</span>&#125;)</span><br><span class="line">		<span class="keyword">for</span> j := <span class="keyword">range</span> priorityConfigs &#123;</span><br><span class="line">			result[i].Score += results[j][i].Score * priorityConfigs[j].Weight</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 继续使用 extenders 来进行优选 </span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(extenders) != <span class="number">0</span> &amp;&amp; nodes != <span class="literal">nil</span> &#123;</span><br><span class="line">		combinedScores := <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">int</span>, <span class="built_in">len</span>(nodeNameToInfo))</span><br><span class="line">		<span class="keyword">for</span> _, extender := <span class="keyword">range</span> extenders &#123;</span><br><span class="line">			wg.Add(<span class="number">1</span>)</span><br><span class="line">			<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">(ext algorithm.SchedulerExtender)</span></span> &#123;</span><br><span class="line">				<span class="keyword">defer</span> wg.Done()</span><br><span class="line">				prioritizedList, weight, err := ext.Prioritize(pod, nodes)</span><br><span class="line">				<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">					<span class="comment">// Prioritization errors from extender can be ignored, let k8s/other extenders determine the priorities</span></span><br><span class="line">					<span class="keyword">return</span></span><br><span class="line">				&#125;</span><br><span class="line">				mu.Lock()</span><br><span class="line">				<span class="keyword">for</span> i := <span class="keyword">range</span> *prioritizedList &#123;</span><br><span class="line">					host, score := (*prioritizedList)[i].Host, (*prioritizedList)[i].Score</span><br><span class="line">					combinedScores[host] += score * weight</span><br><span class="line">				&#125;</span><br><span class="line">				mu.Unlock()</span><br><span class="line">			&#125;(extender)</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// wait for all go routines to finish</span></span><br><span class="line">		wg.Wait()</span><br><span class="line">		<span class="keyword">for</span> i := <span class="keyword">range</span> result &#123;</span><br><span class="line">			result[i].Score += combinedScores[result[i].Host]</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">  </span><br><span class="line">	<span class="keyword">return</span> result, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="算法初始化"><a href="#算法初始化" class="headerlink" title="算法初始化"></a>算法初始化</h2><p>k8s.io/kubernetes/pkg/scheduler/algorithmprovider/plugins.go 函数 <code>ApplyFeatureGates</code></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> algorithmprovider</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">"k8s.io/kubernetes/pkg/scheduler/algorithmprovider/defaults"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="comment">// ApplyFeatureGates applies algorithm by feature gates.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">ApplyFeatureGates</span><span class="params">()</span></span> &#123;</span><br><span class="line">	defaults.ApplyFeatureGates()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/pkg/scheduler/algorithmprovider/defaults/defaults.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">init</span><span class="params">()</span></span> &#123;</span><br><span class="line">	<span class="comment">// Register functions that extract metadata used by predicates and priorities computations.</span></span><br><span class="line">	factory.RegisterPredicateMetadataProducerFactory(</span><br><span class="line">		<span class="function"><span class="keyword">func</span><span class="params">(args factory.PluginFactoryArgs)</span> <span class="title">algorithm</span>.<span class="title">PredicateMetadataProducer</span></span> &#123;</span><br><span class="line">			<span class="keyword">return</span> predicates.NewPredicateMetadataFactory(args.PodLister)</span><br><span class="line">		&#125;)</span><br><span class="line">  </span><br><span class="line">	factory.RegisterPriorityMetadataProducerFactory(</span><br><span class="line">		<span class="function"><span class="keyword">func</span><span class="params">(args factory.PluginFactoryArgs)</span> <span class="title">algorithm</span>.<span class="title">PriorityMetadataProducer</span></span> &#123;</span><br><span class="line">			<span class="keyword">return</span> priorities.NewPriorityMetadataFactory(args.ServiceLister, args.ControllerLister, args.ReplicaSetLister, args.StatefulSetLister)</span><br><span class="line">		&#125;)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 注册默认的预选算法和优选算法</span></span><br><span class="line">	registerAlgorithmProvider(defaultPredicates(), defaultPriorities())</span><br><span class="line"></span><br><span class="line">	<span class="comment">// IMPORTANT NOTES for predicate developers:</span></span><br><span class="line">	<span class="comment">// We are using cached predicate result for pods belonging to the same equivalence class.</span></span><br><span class="line">	<span class="comment">// So when implementing a new predicate, you are expected to check whether the result</span></span><br><span class="line">	<span class="comment">// of your predicate function can be affected by related API object change (ADD/DELETE/UPDATE).</span></span><br><span class="line">	<span class="comment">// If yes, you are expected to invalidate the cached predicate result for related API object change.</span></span><br><span class="line">	<span class="comment">// For example:</span></span><br><span class="line">	<span class="comment">// https://github.com/kubernetes/kubernetes/blob/36a218e/plugin/pkg/scheduler/factory/factory.go#L422</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Registers predicates and priorities that are not enabled by default, but user can pick when creating their</span></span><br><span class="line">	<span class="comment">// own set of priorities/predicates.</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// PodFitsPorts has been replaced by PodFitsHostPorts for better user understanding.</span></span><br><span class="line">	<span class="comment">// For backwards compatibility with 1.0, PodFitsPorts is registered as well.</span></span><br><span class="line">	factory.RegisterFitPredicate(<span class="string">"PodFitsPorts"</span>, predicates.PodFitsHostPorts)</span><br><span class="line">	<span class="comment">// Fit is defined based on the absence of port conflicts.</span></span><br><span class="line">	<span class="comment">// This predicate is actually a default predicate, because it is invoked from</span></span><br><span class="line">	<span class="comment">// predicates.GeneralPredicates()</span></span><br><span class="line">	factory.RegisterFitPredicate(predicates.PodFitsHostPortsPred, predicates.PodFitsHostPorts)</span><br><span class="line">	<span class="comment">// Fit is determined by resource availability.</span></span><br><span class="line">	<span class="comment">// This predicate is actually a default predicate, because it is invoked from</span></span><br><span class="line">	<span class="comment">// predicates.GeneralPredicates()</span></span><br><span class="line">	factory.RegisterFitPredicate(predicates.PodFitsResourcesPred, predicates.PodFitsResources)</span><br><span class="line">	<span class="comment">// Fit is determined by the presence of the Host parameter and a string match</span></span><br><span class="line">	<span class="comment">// This predicate is actually a default predicate, because it is invoked from</span></span><br><span class="line">	<span class="comment">// predicates.GeneralPredicates()</span></span><br><span class="line">	factory.RegisterFitPredicate(predicates.HostNamePred, predicates.PodFitsHost)</span><br><span class="line">	<span class="comment">// Fit is determined by node selector query.</span></span><br><span class="line">	factory.RegisterFitPredicate(predicates.MatchNodeSelectorPred, predicates.PodMatchNodeSelector)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// ServiceSpreadingPriority is a priority config factory that spreads pods by minimizing</span></span><br><span class="line">	<span class="comment">// the number of pods (belonging to the same service) on the same node.</span></span><br><span class="line">	<span class="comment">// Register the factory so that it's available, but do not include it as part of the default priorities</span></span><br><span class="line">	<span class="comment">// Largely replaced by "SelectorSpreadPriority", but registered for backward compatibility with 1.0</span></span><br><span class="line">	factory.RegisterPriorityConfigFactory(</span><br><span class="line">		<span class="string">"ServiceSpreadingPriority"</span>,</span><br><span class="line">		factory.PriorityConfigFactory&#123;</span><br><span class="line">			MapReduceFunction: <span class="function"><span class="keyword">func</span><span class="params">(args factory.PluginFactoryArgs)</span> <span class="params">(algorithm.PriorityMapFunction, algorithm.PriorityReduceFunction)</span></span> &#123;</span><br><span class="line">				<span class="keyword">return</span> priorities.NewSelectorSpreadPriority(args.ServiceLister, algorithm.EmptyControllerLister&#123;&#125;, algorithm.EmptyReplicaSetLister&#123;&#125;, algorithm.EmptyStatefulSetLister&#123;&#125;)</span><br><span class="line">			&#125;,</span><br><span class="line">			Weight: <span class="number">1</span>,</span><br><span class="line">		&#125;,</span><br><span class="line">	)</span><br><span class="line">	<span class="comment">// EqualPriority is a prioritizer function that gives an equal weight of one to all nodes</span></span><br><span class="line">	<span class="comment">// Register the priority function so that its available</span></span><br><span class="line">	<span class="comment">// but do not include it as part of the default priorities</span></span><br><span class="line">	factory.RegisterPriorityFunction2(<span class="string">"EqualPriority"</span>, core.EqualPriorityMap, <span class="literal">nil</span>, <span class="number">1</span>)</span><br><span class="line">	<span class="comment">// Optional, cluster-autoscaler friendly priority function - give used nodes higher priority.</span></span><br><span class="line">	factory.RegisterPriorityFunction2(<span class="string">"MostRequestedPriority"</span>, priorities.MostRequestedPriorityMap, <span class="literal">nil</span>, <span class="number">1</span>)</span><br><span class="line">	factory.RegisterPriorityFunction2(</span><br><span class="line">		<span class="string">"RequestedToCapacityRatioPriority"</span>,</span><br><span class="line">		priorities.RequestedToCapacityRatioResourceAllocationPriorityDefault().PriorityMap,</span><br><span class="line">		<span class="literal">nil</span>,</span><br><span class="line">		<span class="number">1</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="预选算法"><a href="#预选算法" class="headerlink" title="预选算法"></a>预选算法</h2><p>k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// IMPORTANT <span class="doctag">NOTE:</span> this list contains the ordering of the predicates, if you develop a new predicate</span></span><br><span class="line"><span class="comment">// it is mandatory to add its name to this list.</span></span><br><span class="line"><span class="comment">// Otherwise it won't be processed, see generic_scheduler#podFitsOnNode().</span></span><br><span class="line"><span class="comment">// The order is based on the restrictiveness &amp; complexity of predicates.</span></span><br><span class="line"><span class="comment">// Design doc: https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/predicates-ordering.md</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 预选算法的顺序</span></span><br><span class="line"><span class="keyword">var</span> (</span><br><span class="line">	predicatesOrdering = []<span class="keyword">string</span>&#123;CheckNodeConditionPred, CheckNodeUnschedulablePred,</span><br><span class="line">		GeneralPred, HostNamePred, PodFitsHostPortsPred,</span><br><span class="line">		MatchNodeSelectorPred, PodFitsResourcesPred, NoDiskConflictPred,</span><br><span class="line">		PodToleratesNodeTaintsPred, PodToleratesNodeNoExecuteTaintsPred, CheckNodeLabelPresencePred,</span><br><span class="line">		CheckServiceAffinityPred, MaxEBSVolumeCountPred, MaxGCEPDVolumeCountPred, MaxCSIVolumeCountPred,</span><br><span class="line">		MaxAzureDiskVolumeCountPred, CheckVolumeBindingPred, NoVolumeZoneConflictPred,</span><br><span class="line">		CheckNodeMemoryPressurePred, CheckNodePIDPressurePred, CheckNodeDiskPressurePred, MatchInterPodAffinityPred&#125;</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/pkg/scheduler/algorithmprovider/defaults/defaults.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">defaultPredicates</span><span class="params">()</span> <span class="title">sets</span>.<span class="title">String</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> sets.NewString(</span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">// Fit is determined by node conditions: not ready, </span></span><br><span class="line">    <span class="comment">// network unavailable or out of disk.</span></span><br><span class="line">		factory.RegisterMandatoryFitPredicate(predicates.CheckNodeConditionPred, predicates.CheckNodeConditionPredicate), <span class="comment">// 见下文函数分析</span></span><br><span class="line">		</span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go</p>
+<p><code>CheckNodeConditionPredicate</code> 函数用于判断 Node 的状态是否符合预期：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// CheckNodeConditionPredicate checks if a pod can be scheduled on a node reporting out of disk,</span></span><br><span class="line"><span class="comment">// network unavailable and not ready condition. Only node conditions are accounted in this predicate.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">CheckNodeConditionPredicate</span><span class="params">(pod *v1.Pod, meta algorithm.PredicateMetadata, nodeInfo *schedulercache.NodeInfo)</span> <span class="params">(<span class="keyword">bool</span>, []algorithm.PredicateFailureReason, error)</span></span> &#123;</span><br><span class="line">	reasons := []algorithm.PredicateFailureReason&#123;&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> nodeInfo == <span class="literal">nil</span> || nodeInfo.Node() == <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>, []algorithm.PredicateFailureReason&#123;ErrNodeUnknownCondition&#125;, <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	node := nodeInfo.Node()</span><br><span class="line">	<span class="keyword">for</span> _, cond := <span class="keyword">range</span> node.Status.Conditions &#123;</span><br><span class="line">		<span class="comment">// We consider the node for scheduling only when its:</span></span><br><span class="line">		<span class="comment">// - NodeReady condition status is ConditionTrue,</span></span><br><span class="line">		<span class="comment">// - NodeOutOfDisk condition status is ConditionFalse,</span></span><br><span class="line">		<span class="comment">// - NodeNetworkUnavailable condition status is ConditionFalse.</span></span><br><span class="line">		<span class="keyword">if</span> cond.Type == v1.NodeReady &amp;&amp; cond.Status != v1.ConditionTrue &#123;</span><br><span class="line">			reasons = <span class="built_in">append</span>(reasons, ErrNodeNotReady)</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> cond.Type == v1.NodeOutOfDisk &amp;&amp; cond.Status != v1.ConditionFalse &#123;</span><br><span class="line">			reasons = <span class="built_in">append</span>(reasons, ErrNodeOutOfDisk)</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> cond.Type == v1.NodeNetworkUnavailable &amp;&amp; cond.Status != v1.ConditionFalse &#123;</span><br><span class="line">			reasons = <span class="built_in">append</span>(reasons, ErrNodeNetworkUnavailable)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> node.Spec.Unschedulable &#123;</span><br><span class="line">		reasons = <span class="built_in">append</span>(reasons, ErrNodeUnschedulable)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">len</span>(reasons) == <span class="number">0</span>, reasons, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中函数 <code>RegisterFitPredicate</code> 是对 <code>RegisterFitPredicateFactory</code> 的一层封装：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// RegisterFitPredicate registers a fit predicate with the algorithm</span></span><br><span class="line"><span class="comment">// registry. Returns the name with which the predicate was registered.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">RegisterFitPredicate</span><span class="params">(name <span class="keyword">string</span>, predicate algorithm.FitPredicate)</span> <span class="title">string</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> RegisterFitPredicateFactory(name, <span class="function"><span class="keyword">func</span><span class="params">(PluginFactoryArgs)</span> <span class="title">algorithm</span>.<span class="title">FitPredicate</span></span> &#123; <span class="keyword">return</span> predicate &#125;)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="优选算法-重点"><a href="#优选算法-重点" class="headerlink" title="优选算法 - 重点"></a>优选算法 - 重点</h2><p>k8s.io/kubernetes/pkg/scheduler/algorithmprovider/defaults/defaults.go</p>
+<table>
+<thead>
+<tr>
+<th>序号</th>
+<th>优选策略</th>
+<th>策略说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>SelectorSpreadPriority</td>
+<td>尽量将属于同一 Service，StatefulSet 或 ReplicaSet 的 Pod 跨主机调度</td>
+</tr>
+<tr>
+<td>2</td>
+<td>InterPodAffinityPriority</td>
+<td>基于 Pod 亲和情况打分, 通过循环计算 weightedPodAffinityTerm 的和，如果该节点满足相应的PodAffinityTerm，则在总和中添加 “权重” 来计算总和；总和最高的节点是最优选的</td>
+</tr>
+<tr>
+<td>3</td>
+<td>LeastRequestedPriority</td>
+<td>计算 Pod 需要的 CPU 和内存资源与在 Node 可用资源的百分比，具有最小百分比的节点就是最优</td>
+</tr>
+<tr>
+<td>4</td>
+<td>BalancedResourceAllocation</td>
+<td>根据 Node 上各项资源(CPU、内存) 使用率均衡情况进行打分</td>
+</tr>
+<tr>
+<td>5</td>
+<td>NodePreferAvoidPodsPriority</td>
+<td>根据节点注释 scheduler.alpha.kubernetes.io/preferAvoidPods 对节点进行优先级排序。您可以使用它来暗示两个不同的Pod不应在同一节点上运行</td>
+</tr>
+<tr>
+<td>6</td>
+<td>NodeAffinityPriority</td>
+<td>根据 PreferredDuringSchedulingIgnoredDuringExecution 中指示的节点相似性调度首选项对节点进行优先级排序。您可以在将Pod分配给节点中了解有关此内容的更多信息</td>
+</tr>
+<tr>
+<td>7</td>
+<td>TaintTolerationPriority</td>
+<td>根据节点上无法忍受的污点数量，为所有节点准备优先级列表。该策略会根据该列表来调整节点的排名</td>
+</tr>
+<tr>
+<td>8</td>
+<td>ImageLocalityPriority</td>
+<td>根据节点上无法忍受的污点数量，为所有节点准备优先级列表。该策略会根据该列表来调整节点的排名</td>
+</tr>
+<tr>
+<td></td>
+<td>以上是 default  priotirty 函数注册</td>
+<td></td>
+</tr>
+<tr>
+<td>9</td>
+<td>ServiceSpreadingPriority</td>
+<td>对于给定的服务的 Pod 分配到不同的节点上运行，它有利于安排到尚未在其中分配了服务的 Pod 的节点上进行调度。总体结果是，该服务对于单个节点故障变得更具弹性</td>
+</tr>
+<tr>
+<td>10</td>
+<td>EqualPriority</td>
+<td>对所有节点给予相等的权重</td>
+</tr>
+<tr>
+<td>11</td>
+<td>MostRequestedPriority</td>
+<td>根据 Node 上所提供的资源进行打分；使用请求最多的资源来支持节点。此策略将使计划的 Pod 适应运行整体工作负载所需的最少数量的节点</td>
+</tr>
+<tr>
+<td>12</td>
+<td>RequestedToCapacityRatioPriority</td>
+<td>使用默认资源评分功能形状创建基于 requestToCapacity 的ResourceAllocationPriority</td>
+</tr>
+</tbody>
+</table>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">defaultPriorities</span><span class="params">()</span> <span class="title">sets</span>.<span class="title">String</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> sets.NewString(</span><br><span class="line">		<span class="comment">// spreads pods by minimizing the number of pods (belonging to the same service or replication controller) on the same node.</span></span><br><span class="line">		factory.RegisterPriorityConfigFactory(</span><br><span class="line">			<span class="string">"SelectorSpreadPriority"</span>,</span><br><span class="line">			factory.PriorityConfigFactory&#123;</span><br><span class="line">				MapReduceFunction: <span class="function"><span class="keyword">func</span><span class="params">(args factory.PluginFactoryArgs)</span> <span class="params">(algorithm.PriorityMapFunction, algorithm.PriorityReduceFunction)</span></span> &#123;</span><br><span class="line">					<span class="keyword">return</span> priorities.NewSelectorSpreadPriority(args.ServiceLister, args.ControllerLister, args.ReplicaSetLister, args.StatefulSetLister)</span><br><span class="line">				&#125;,</span><br><span class="line">				Weight: <span class="number">1</span>,</span><br><span class="line">			&#125;,</span><br><span class="line">		),</span><br><span class="line">		<span class="comment">// pods should be placed in the same topological domain (e.g. same node, same rack, same zone, same power domain, etc.)</span></span><br><span class="line">		<span class="comment">// as some other pods, or, conversely, should not be placed in the same topological domain as some other pods.</span></span><br><span class="line">		factory.RegisterPriorityConfigFactory(</span><br><span class="line">			<span class="string">"InterPodAffinityPriority"</span>,</span><br><span class="line">			factory.PriorityConfigFactory&#123;</span><br><span class="line">				Function: <span class="function"><span class="keyword">func</span><span class="params">(args factory.PluginFactoryArgs)</span> <span class="title">algorithm</span>.<span class="title">PriorityFunction</span></span> &#123;</span><br><span class="line">					<span class="keyword">return</span> priorities.NewInterPodAffinityPriority(args.NodeInfo, args.NodeLister, args.PodLister, args.HardPodAffinitySymmetricWeight)</span><br><span class="line">				&#125;,</span><br><span class="line">				Weight: <span class="number">1</span>,</span><br><span class="line">			&#125;,</span><br><span class="line">		),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Prioritize nodes by least requested utilization.</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"LeastRequestedPriority"</span>, priorities.LeastRequestedPriorityMap, <span class="literal">nil</span>, <span class="number">1</span>),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Prioritizes nodes to help achieve balanced resource usage</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"BalancedResourceAllocation"</span>, priorities.BalancedResourceAllocationMap, <span class="literal">nil</span>, <span class="number">1</span>),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Set this weight large enough to override all other priority functions.</span></span><br><span class="line">		<span class="comment">// <span class="doctag">TODO:</span> Figure out a better way to do this, maybe at same time as fixing #24720.</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"NodePreferAvoidPodsPriority"</span>, priorities.CalculateNodePreferAvoidPodsPriorityMap, <span class="literal">nil</span>, <span class="number">10000</span>),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Prioritizes nodes that have labels matching NodeAffinity</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"NodeAffinityPriority"</span>, priorities.CalculateNodeAffinityPriorityMap, priorities.CalculateNodeAffinityPriorityReduce, <span class="number">1</span>),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Prioritizes nodes that marked with taint which pod can tolerate.</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"TaintTolerationPriority"</span>, priorities.ComputeTaintTolerationPriorityMap, priorities.ComputeTaintTolerationPriorityReduce, <span class="number">1</span>),</span><br><span class="line"></span><br><span class="line">		<span class="comment">// ImageLocalityPriority prioritizes nodes that have images requested by the pod present.</span></span><br><span class="line">		factory.RegisterPriorityFunction2(<span class="string">"ImageLocalityPriority"</span>, priorities.ImageLocalityPriorityMap, <span class="literal">nil</span>, <span class="number">1</span>),</span><br><span class="line">	)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><img src="https://www.do1618.com/wp-content/uploads/2019/12/Schedule.jpeg" alt="img"> 来源<a href="https://ggaaooppeenngg.github.io/zh-CN/2017/09/26/kubernetes-%E6%8C%87%E5%8C%97/Schedule.jpeg" target="_blank" rel="noopener">https://ggaaooppeenngg.github.io/zh-CN/2017/09/26/kubernetes-%E6%8C%87%E5%8C%97/Schedule.jpeg</a></p>
+<h2 id="Preempt"><a href="#Preempt" class="headerlink" title="Preempt"></a>Preempt</h2><p>当通过正常的调度流程如果没有找到合适的节点（主要是预选没有合适的节点），会判断需不需要进行<strong>抢占调度</strong>，具体的代码在<code>pkg/scheduler/scheduler.go</code>文件下，用到的方法<code>preempt</code>。</p>
+<h2 id="自定义调度器"><a href="#自定义调度器" class="headerlink" title="自定义调度器"></a>自定义调度器</h2><p>kube-scheduler 在启动的时候可以通过 <code>--policy-config-file</code> 参数可以指定调度策略文件，用户可以根据需要组装 predicates 和 priority 函数。配置多个调度器参见文档：<a href="https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/" target="_blank" rel="noopener">Configure Multiple Schedulers</a></p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line"><span class="attr">"kind"</span> : <span class="string">"Policy"</span>,</span><br><span class="line"><span class="attr">"apiVersion"</span> : <span class="string">"v1"</span>,</span><br><span class="line"><span class="attr">"predicates"</span> : [</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"PodFitsHostPorts"</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"PodFitsResources"</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"NoDiskConflict"</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"NoVolumeZoneConflict"</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"MatchNodeSelector"</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"HostName"</span>&#125;</span><br><span class="line">    ],</span><br><span class="line"><span class="attr">"priorities"</span> : [</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"LeastRequestedPriority"</span>, <span class="attr">"weight"</span> : <span class="number">1</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"BalancedResourceAllocation"</span>, <span class="attr">"weight"</span> : <span class="number">1</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"ServiceSpreadingPriority"</span>, <span class="attr">"weight"</span> : <span class="number">1</span>&#125;,</span><br><span class="line">    &#123;<span class="attr">"name"</span> : <span class="string">"EqualPriority"</span>, <span class="attr">"weight"</span> : <span class="number">1</span>&#125;</span><br><span class="line">    ],</span><br><span class="line"><span class="attr">"hardPodAffinitySymmetricWeight"</span> : <span class="number">10</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>当然我们也可以自己编写  predicate 或 priority 函数，并完成注册</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// predicate </span></span><br><span class="line"><span class="keyword">type</span> FitPredicate <span class="function"><span class="keyword">func</span><span class="params">(pod *v1.Pod, meta <span class="keyword">interface</span>&#123;&#125;, nodeInfo *schedulercache.NodeInfo)</span> <span class="params">(<span class="keyword">bool</span>, []PredicateFailureReason, error)</span></span></span><br><span class="line"><span class="function"></span></span><br><span class="line"><span class="function">// 完成注册</span></span><br><span class="line">factory.RegisterFitPredicate("MyFunc", predicates.PodFitsHostPorts)</span><br><span class="line"></span><br><span class="line"><span class="comment">// 自定义 policy 文件使用即可</span></span><br></pre></td></tr></table></figure>
+<p>Pod 可以通过 spec.schedulername 字段指定特定的调度器；</p>
+<blockquote>
+<p>调取器的名字并没有统一保存在 apiserver 中进行统一管理，而是每个调取器去 apiserver 中获取和自己名字一直的 pod 来调度。也就是说，调度器是自己管理名字的，因此做到不冲突而且逻辑正确是每个调度器的工作。</p>
+</blockquote>
+<p>一个非常简单的 shell 调度器，它通过 <code>kubectl</code> 命令从 apiserver 获取未调度的 pod（<code>spec.schedulerName</code> 是 <code>my-scheduler</code>，并且<code>spec.nodeName</code> 为空），同样地，用 <code>kubectl</code> 从 apiserver 获取 nodes 的信息，然后随机选择一个 node 作为调度结果，并写入到 apiserver 中。更加详细的可以参见 <a href="https://github.com/kelseyhightower/scheduler" target="_blank" rel="noopener">https://github.com/kelseyhightower/scheduler</a> 和 <a href="https://banzaicloud.com/blog/k8s-custom-scheduler/" target="_blank" rel="noopener">Writing custom Kubernetes schedulers</a></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">SERVER=<span class="string">'localhost:8001'</span></span><br><span class="line"><span class="keyword">while</span> <span class="literal">true</span>;</span><br><span class="line"><span class="keyword">do</span></span><br><span class="line">    <span class="keyword">for</span> PODNAME <span class="keyword">in</span> $(kubectl --server <span class="variable">$SERVER</span> get pods -o json | jq <span class="string">'.items[] | select(.spec.schedulerName == "my-scheduler") | select(.spec.nodeName == null) | .metadata.name'</span> | tr -d <span class="string">'"'</span>)</span><br><span class="line">;</span><br><span class="line">    <span class="keyword">do</span></span><br><span class="line">        NODES=($(kubectl --server <span class="variable">$SERVER</span> get nodes -o json | jq <span class="string">'.items[].metadata.name'</span> | tr -d <span class="string">'"'</span>))</span><br><span class="line">        NUMNODES=<span class="variable">$&#123;#NODES[@]&#125;</span></span><br><span class="line">        CHOSEN=<span class="variable">$&#123;NODES[$[ $RANDOM % $NUMNODES ]]&#125;</span></span><br><span class="line">        curl --header <span class="string">"Content-Type:application/json"</span> --request POST --data <span class="string">'&#123;"apiVersion":"v1", "kind": "Binding", "metadata": &#123;"name": "'</span><span class="variable">$PODNAME</span><span class="string">'"&#125;, "target": &#123;"apiVersion": "v1", "kind"</span></span><br><span class="line"><span class="string">: "Node", "name": "'</span><span class="variable">$CHOSEN</span><span class="string">'"&#125;&#125;'</span> http://<span class="variable">$SERVER</span>/api/v1/namespaces/default/pods/<span class="variable">$PODNAME</span>/binding/</span><br><span class="line">        <span class="built_in">echo</span> <span class="string">"Assigned <span class="variable">$PODNAME</span> to <span class="variable">$CHOSEN</span>"</span></span><br><span class="line">    <span class="keyword">done</span></span><br><span class="line">    sleep 1</span><br><span class="line"><span class="keyword">done</span></span><br></pre></td></tr></table></figure>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><a href="https://kubernetes.io/docs/concepts/scheduling/" target="_blank" rel="noopener">Kubernetes Scheduler</a></li>
+<li><a href="https://juejin.im/post/5c889c2e5188257df700a732#heading-5" target="_blank" rel="noopener">Kubernetes源码分析之kube-scheduler</a></li>
+<li><a href="https://cizixs.com/2017/07/19/kubernetes-scheduler-source-code-analysis/" target="_blank" rel="noopener">kubelet scheduler 源码分析：调度器的工作原理</a></li>
+<li><a href="http://tang.love/2018/07/24/learning-kubernetes-source-code/" target="_blank" rel="noopener">Kubernetes Scheduler 源码全解析（附流程图）</a></li>
+<li><a href="https://www.jianshu.com/p/aecdd7bf925c" target="_blank" rel="noopener">k8s-调度算法</a></li>
+<li><a href="https://github.com/kelseyhightower/scheduler" target="_blank" rel="noopener">A toy kubernetes scheduler</a></li>
+<li><a href="https://www.qikqiak.com/post/kube-scheduler-introduction/" target="_blank" rel="noopener">Kubernetes 调度器介绍</a></li>
+</ol>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2019/03/05/service-mesh-intro/" title="下一代微服务" servicemesh="" 介绍="">
+                    <div class="prevTitle">下一代微服务 ServiceMesh 介绍</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2019/12/02/kube-scheduler-source/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Kube-Scheduler 源码剖析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#主要功能"><span class="toc-number">1.</span> <span class="toc-text">主要功能</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#核心主流程"><span class="toc-number">2.</span> <span class="toc-text">核心主流程</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#启动"><span class="toc-number">2.1.</span> <span class="toc-text">启动</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Run-函数入口"><span class="toc-number">2.2.</span> <span class="toc-text">Run() 函数入口</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#配置初始化-之-config-CompletedConfig"><span class="toc-number">2.3.</span> <span class="toc-text">配置初始化-之 config.CompletedConfig</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#配置初始化-之-scheduler-Config"><span class="toc-number">2.4.</span> <span class="toc-text">配置初始化-之 scheduler.Config</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#scheduleOne"><span class="toc-number">2.5.</span> <span class="toc-text">scheduleOne</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#预选函数主流程"><span class="toc-number">2.6.</span> <span class="toc-text">预选函数主流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#优选函数主流程"><span class="toc-number">2.7.</span> <span class="toc-text">优选函数主流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#算法初始化"><span class="toc-number">3.</span> <span class="toc-text">算法初始化</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#预选算法"><span class="toc-number">4.</span> <span class="toc-text">预选算法</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#优选算法-重点"><span class="toc-number">5.</span> <span class="toc-text">优选算法 - 重点</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Preempt"><span class="toc-number">6.</span> <span class="toc-text">Preempt</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#自定义调度器"><span class="toc-number">7.</span> <span class="toc-text">自定义调度器</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考"><span class="toc-number">8.</span> <span class="toc-text">参考</span></a></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 43 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/kube-scheduler-source/">Kube-Scheduler 源码剖析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/05</span><a class="archive-post-title" href="/2019/03/05/service-mesh-intro/">下一代微服务 ServiceMesh 介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="scheduler"><span class="iconfont-archer">&#xe606;</span>scheduler</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+

@@ -300,6 +300,37 @@
     
     
         <article class="index-post">
+            <a class="abstract-title" href="/2018/09/26/xds-protocol/">
+                
+                    <span>xDS REST 和 gRPC 协议（译）</span>
+            </a>
+            <div class="abstract-content">
+                原文地址： https://github.com/envoyproxy/data-plane-api/blob/master/XDS_PROTOCOL.md翻译：狄卫华校对：宋净超
+Envoy 通过查询文件或管理服务器来动态发现资源。概括地讲，对应的发现服务及其相应的 API 被称作 xDS。Envoy 通过订阅（subscription）方式来获取资源，如监控指定路径下的文件、启动 gRPC 流或轮询 REST-JSON URL。后两种方式会发送 DiscoveryRequest 请求消息，发现的对应资源则包含在响应消息 DiscoveryResponse 中。下面，我们将具体讨论每种...
+            </div>
+            <div class="abstract-post-meta">
+                <!-- date  -->
+                <div class="abstract-date">
+                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/09/26</span>
+                </div>
+                <!-- tags  -->
+                
+                <div class="abstract-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="envoy">envoy</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="grpc">grpc</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="xds">xds</a>
+    
+</div>
+                
+            </div>
+        </article>
+    
+    
+    
+        <article class="index-post">
             <a class="abstract-title" href="/2018/09/13/Prometheus-Discovery-K8S/">
                 
                     <span>Prometheus Discovery 之 K8S 代码分析</span>
@@ -585,37 +616,6 @@ ORG 服务于 ES 服务部署在同一台机器上时，可以正常工作。
                 <div class="abstract-tags">
     
         <a class="post-tag" href="javascript:void(0);" data-tags="elasticserach">elasticserach</a>
-    
-</div>
-                
-            </div>
-        </article>
-    
-    
-    
-        <article class="index-post">
-            <a class="abstract-title" href="/2018/06/28/envoy_eds/">
-                
-                    <span>Hello Envoy EDS</span>
-            </a>
-            <div class="abstract-content">
-                Arch
-See alos： https://github.com/DavadDi/envoy_discovery
-Start SDS/EDS server12345678910$ cd eds_server/$ virtualenv env --python=python2.7$ source env/bin/activate$ pip install -r requirements.txt# ImportError: No module named enum# $ pip install enum34$ python main.py
-Start upstream serverStar...
-            </div>
-            <div class="abstract-post-meta">
-                <!-- date  -->
-                <div class="abstract-date">
-                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/06/28</span>
-                </div>
-                <!-- tags  -->
-                
-                <div class="abstract-tags">
-    
-        <a class="post-tag" href="javascript:void(0);" data-tags="envoy">envoy</a>
-    
-        <a class="post-tag" href="javascript:void(0);" data-tags="eds">eds</a>
     
 </div>
                 
@@ -1277,7 +1277,22 @@ Start upstream serverStar...
     
     
     
-    <div class="total-archive"> Total : 42 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 43 </div>
     
     <div class="post-archive">
     
@@ -1286,6 +1301,11 @@ Start upstream serverStar...
     
     <div class="archive-year"> 2019 </div>
     <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/kube-scheduler-source/">Kube-Scheduler 源码剖析</a>
+        </li>
     
     
         <li class="archive-post-item">
@@ -1564,9 +1584,9 @@ Start upstream serverStar...
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
     
-        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
@@ -1609,6 +1629,8 @@ Start upstream serverStar...
         <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
     
         <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="scheduler"><span class="iconfont-archer">&#xe606;</span>scheduler</span>
     
         <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
     
