@@ -313,6 +313,40 @@
     
     
         <article class="index-post">
+            <a class="abstract-title" href="/2018/07/13/no_es_node_available/">
+                
+                    <span>no Elasticsearch node available</span>
+            </a>
+            <div class="abstract-content">
+                现象现场的 ORG 服务使用了 ES 搜索，但是现场的搜索一直不能够正常工作。 现场情况如下：
+
+ES 版本为 5.5.1， 部署在机器 B 上，采用 Docker 方式部署。
+ORG 服务采用 go 语言开发，驱动是采用的 “gopkg.in/olivere/elastic.v5” 部署在机器A上，搜索数据一直返回空，在 ES 机器上用命令行直接搜索有结果数据。
+TES 服务采用 node.js 开发，也连接 ES ，能够正常工作。
+机器 A 上 使用 curl  es_addr 能够正常显示 ES 集群相关信息。
+ORG 服务于 ES 服务部署在同一台机器上时，可以正常工作。
+
+简单...
+            </div>
+            <div class="abstract-post-meta">
+                <!-- date  -->
+                <div class="abstract-date">
+                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/07/13</span>
+                </div>
+                <!-- tags  -->
+                
+                <div class="abstract-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="elasticserach">elasticserach</a>
+    
+</div>
+                
+            </div>
+        </article>
+    
+    
+    
+        <article class="index-post">
             <a class="abstract-title" href="/2018/06/28/envoy_eds/">
                 
                     <span>Hello Envoy EDS</span>
@@ -583,44 +617,6 @@ Kub...
                 <!-- date  -->
                 <div class="abstract-date">
                     <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/04/06</span>
-                </div>
-                <!-- tags  -->
-                
-                <div class="abstract-tags">
-    
-        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
-    
-        <a class="post-tag" href="javascript:void(0);" data-tags="api-server">api-server</a>
-    
-</div>
-                
-            </div>
-        </article>
-    
-    
-    
-        <article class="index-post">
-            <a class="abstract-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">
-                
-                    <span>Kubernets深入系列： API Server - part 1（译）</span>
-            </a>
-            <div class="abstract-content">
-                作者：STEFAN SCHIMANSKI AND MICHAEL HAUSENBLAS APRIL 28, 2017
-翻译：狄卫华
-原文：Kubernetes deep dive: API Server – part 1
-原文链接：https://blog.openshift.com/kubernetes-deep-dive-api-server-part-1/
-
-本系列翻译链接：
-
-Kubernetes深入系列：API Server-Part 1
-Kubernetes深入系列：API Server-Part 2
-Kubernetes深入系列：API Server-Part 3a
-Kub...
-            </div>
-            <div class="abstract-post-meta">
-                <!-- date  -->
-                <div class="abstract-date">
-                    <span class="abstract-calander iconfont-archer">&#xe676;</span><span class="abstract-time">2018/04/05</span>
                 </div>
                 <!-- tags  -->
                 
@@ -1381,7 +1377,26 @@ Kub...
     
     
     
-    <div class="total-archive"> Total : 43 </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 44 </div>
     
     <div class="post-archive">
     
@@ -1390,6 +1405,11 @@ Kub...
     
     <div class="archive-year"> 2019 </div>
     <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/serverless/">Serverless 漫谈</a>
+        </li>
     
     
         <li class="archive-post-item">
@@ -1633,6 +1653,10 @@ Kub...
     
         <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
     
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
         <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
     
         <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
@@ -1641,17 +1665,13 @@ Kub...
     
         <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
     
-        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
     
-        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
         <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
     
         <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
-    
-        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
-    
-        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
         <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
     
@@ -1665,19 +1685,21 @@ Kub...
     
         <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
     
-        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
         <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
     
-        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
-    
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     
@@ -1694,8 +1716,6 @@ Kub...
         <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
     
         <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
-    
-        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
         <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
     
@@ -1719,9 +1739,9 @@ Kub...
     
         <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
     
-        <span class="sidebar-tag-name" data-tags="scheduler"><span class="iconfont-archer">&#xe606;</span>scheduler</span>
-    
         <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+        <span class="sidebar-tag-name" data-tags="scheduler"><span class="iconfont-archer">&#xe606;</span>scheduler</span>
     
     </div>
     <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
@@ -1758,9 +1778,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
     
-        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
-    
         <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
     
         <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
     
@@ -1768,9 +1788,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
     
-        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
-    
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
     
