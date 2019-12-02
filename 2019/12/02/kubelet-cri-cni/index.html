@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html>
+    <!-- title -->
+
+
+
+
+
+<head><meta name="generator" content="Hexo 3.8.0">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kubelet - Pod 创建之 CRI 和 CNI 源码剖析 · 程序印象</title>
+    <style type="text/css">
+    @font-face {
+        font-family: 'Oswald-Regular';
+        src: url("/font/Oswald-Regular.ttf");
+    }
+
+    body {
+        margin: 0;
+    }
+
+    header,
+    footer,
+    .back-top,
+    .sidebar,
+    .container,
+    .site-intro-meta,
+    .toc-wrapper {
+        display: none;
+    }
+
+    .site-intro {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        /* height: 50vh; */
+        overflow: hidden;
+        box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .site-intro-placeholder {
+        position: absolute;
+        z-index: -2;
+        top: 0;
+        left: 0;
+        width: calc(100% + 300px);
+        height: 100%;
+        background: repeating-linear-gradient(-45deg, #444 0, #444 80px, #333 80px, #333 160px);
+        background-position: center center;
+        transform: translate3d(-226px, 0, 0);
+        animation: gradient-move 2.5s ease-out 0s 1;
+    }
+
+    @keyframes gradient-move {
+        0% {
+            transform: translate3d(-226px, 0, 0);
+        }
+        100% {
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+</style>
+
+    <link rel="preload" href="/css/style.css?v=20180311" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" type="text/css" href="/css/mobile.css?v=20180311" media="(max-width: 980px)">
+    <link rel="icon" href="/assets/favicon.ico">
+    <script>
+  // load webfont-loader async, and add callback function
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+  
+  // get user agent
+  var browser = {
+    versions: function () {
+      var u = window.navigator.userAgent;
+      return {
+        userAgent: u,
+        trident: u.indexOf('Trident') > -1, //IE内核
+        presto: u.indexOf('Presto') > -1, //opera内核
+        webKit: u.indexOf('AppleWebKit') > -1, //苹果、谷歌内核
+        gecko: u.indexOf('Gecko') > -1 && u.indexOf('KHTML') == -1, //火狐内核
+        mobile: !!u.match(/AppleWebKit.*Mobile.*/), //是否为移动终端
+        ios: !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
+        android: u.indexOf('Android') > -1 || u.indexOf('Linux') > -1, //android终端或者uc浏览器
+        iPhone: u.indexOf('iPhone') > -1 || u.indexOf('Mac') > -1, //是否为iPhone或者安卓QQ浏览器
+        iPad: u.indexOf('iPad') > -1, //是否为iPad
+        webApp: u.indexOf('Safari') == -1, //是否为web应用程序，没有头部与底部
+        weixin: u.indexOf('MicroMessenger') == -1, //是否为微信浏览器
+        uc: u.indexOf('UCBrowser') > -1 //是否为android下的UC浏览器
+      };
+    }()
+  }
+  console.log("userAgent:" + browser.versions.userAgent);
+
+  // callback
+  function fontLoaded() {
+    console.log('font loaded');
+    if (document.getElementsByClassName('site-intro-meta')) {
+      document.getElementsByClassName('intro-title')[0].classList.add('intro-fade-in');
+      document.getElementsByClassName('intro-subtitle')[0].classList.add('intro-fade-in');
+      var postIntroTags = document.getElementsByClassName('post-intro-tags')[0],
+        postIntroMeat = document.getElementsByClassName('post-intro-meta')[0];
+      if (postIntroTags) {
+        postIntroTags.classList.add('post-fade-in');
+      }
+      if (postIntroMeat) {
+        postIntroMeat.classList.add('post-fade-in');
+      }
+    }
+  }
+
+  // UC不支持跨域，所以直接显示
+  function asyncCb(){
+    if (browser.versions.uc) {
+      console.log("UCBrowser");
+      fontLoaded();
+    } else {
+      WebFont.load({
+        custom: {
+          families: ['Oswald-Regular']
+        },
+        loading: function () {  //所有字体开始加载
+          // console.log('loading');
+        },
+        active: function () {  //所有字体已渲染
+          fontLoaded();
+        },
+        inactive: function () { //字体预加载失败，无效字体或浏览器不支持加载
+          console.log('inactive: timeout');
+          fontLoaded();
+        },
+        timeout: 5000 // Set the timeout to two seconds
+      });
+    }
+  }
+
+  async("https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.min.js", asyncCb)
+</script>
+    <script>
+        (function (w) {
+            "use strict";
+            // rel=preload support test
+            if (!w.loadCSS) {
+                w.loadCSS = function () { };
+            }
+            // define on the loadCSS obj
+            var rp = loadCSS.relpreload = {};
+            // rel=preload feature support test
+            // runs once and returns a function for compat purposes
+            rp.support = (function () {
+                var ret;
+                try {
+                    ret = w.document.createElement("link").relList.supports("preload");
+                } catch (e) {
+                    ret = false;
+                }
+                return function () {
+                    return ret;
+                };
+            })();
+
+            // if preload isn't supported, get an asynchronous load by using a non-matching media attribute
+            // then change that media back to its intended value on load
+            rp.bindMediaToggle = function (link) {
+                // remember existing media attr for ultimate state, or default to 'all'
+                var finalMedia = link.media || "all";
+
+                function enableStylesheet() {
+                    link.media = finalMedia;
+                }
+
+                // bind load handlers to enable media
+                if (link.addEventListener) {
+                    link.addEventListener("load", enableStylesheet);
+                } else if (link.attachEvent) {
+                    link.attachEvent("onload", enableStylesheet);
+                }
+
+                // Set rel and non-applicable media type to start an async request
+                // note: timeout allows this to happen async to let rendering continue in IE
+                setTimeout(function () {
+                    link.rel = "stylesheet";
+                    link.media = "only x";
+                });
+                // also enable media after 3 seconds,
+                // which will catch very old browsers (android 2.x, old firefox) that don't support onload on link
+                setTimeout(enableStylesheet, 3000);
+            };
+
+            // loop through link elements in DOM
+            rp.poly = function () {
+                // double check this to prevent external calls from running
+                if (rp.support()) {
+                    return;
+                }
+                var links = w.document.getElementsByTagName("link");
+                for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    // qualify links to those with rel=preload and as=style attrs
+                    if (link.rel === "preload" && link.getAttribute("as") === "style" && !link.getAttribute("data-loadcss")) {
+                        // prevent rerunning on link
+                        link.setAttribute("data-loadcss", true);
+                        // bind listeners to toggle media back
+                        rp.bindMediaToggle(link);
+                    }
+                }
+            };
+
+            // if unsupported, run the polyfill
+            if (!rp.support()) {
+                // run once at least
+                rp.poly();
+
+                // rerun poly on an interval until onload
+                var run = w.setInterval(rp.poly, 500);
+                if (w.addEventListener) {
+                    w.addEventListener("load", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                } else if (w.attachEvent) {
+                    w.attachEvent("onload", function () {
+                        rp.poly();
+                        w.clearInterval(run);
+                    });
+                }
+            }
+            // commonjs
+            if (typeof exports !== "undefined") {
+                exports.loadCSS = loadCSS;
+            }
+            else {
+                w.loadCSS = loadCSS;
+            }
+        }(typeof global !== "undefined" ? global : this));
+    </script>
+    <script src="//cdn.staticfile.org/jquery/3.2.1/jquery.min.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
+    <!-- 百度统计  -->
+    
+    <script>
+        var _hmt = _hmt || [];
+        (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?8156107";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+        })();
+    </script>
+    
+    <!-- 谷歌统计  -->
+    
+</head>
+
+    
+        <body class="post-body">
+    
+    
+<header class="header">
+
+    <div class="read-progress"></div>
+    <div class="header-sidebar-menu">&#xe775;</div>
+    <!-- post页的toggle banner  -->
+    
+    <div class="banner">
+            <div class="blog-title">
+                <a href="/">程序印象</a>
+            </div>
+            <div class="post-title">
+                <a href="#" class="post-name">Kubelet - Pod 创建之 CRI 和 CNI 源码剖析</a>
+            </div>
+    </div>
+    
+    <a class="home-link" href="/">程序印象</a>
+</header>
+    <div class="wrapper">
+        <div class="site-intro" style="height:50vh;">
+    
+    <!-- 主页  -->
+    
+    
+    <!-- 404页  -->
+            
+    <div class="site-intro-img" style="background-image: url(/intro/post-bg.jpg)"></div>
+    <div class="site-intro-placeholder"></div>
+    <div class="site-intro-meta">
+        <!-- 标题  -->
+        <h1 class="intro-title">
+            <!-- 主页  -->
+            
+            Kubelet - Pod 创建之 CRI 和 CNI 源码剖析
+            <!-- 404 -->
+            
+        </h1>
+        <!-- 副标题 -->
+        <p class="intro-subtitle">
+            <!-- 主页副标题  -->
+            
+            
+            <!-- 404 -->
+            
+        </p>
+        <!-- 文章页meta -->
+        
+            <!-- 文章页标签  -->
+            
+                <div class="post-intro-tags">
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubernetes">kubernetes</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="cri">cri</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="kubelet">kubelet</a>
+    
+        <a class="post-tag" href="javascript:void(0);" data-tags="cni">cni</a>
+    
+</div>
+            
+            <div class="post-intro-meta">
+                <span class="post-intro-calander iconfont-archer">&#xe676;</span>
+                <span class="post-intro-time">2019/12/02</span>
+                
+                <span id="busuanzi_container_page_pv" class="busuanzi-pv">
+                    <span class="iconfont-archer">&#xe602;</span>
+                    <span id="busuanzi_value_page_pv"></span>
+                </span>
+                
+                <span class="shareWrapper">
+                    <span class="iconfont-archer shareIcon">&#xe71d;</span>
+                    <span class="shareText">Share</span>
+                    <ul class="shareList">
+                        <li class="iconfont-archer share-qr" data-type="qr">&#xe75b;
+                            <div class="share-qrcode"></div>
+                        </li>
+                        <li class="iconfont-archer" data-type="weibo">&#xe619;</li>
+                        <li class="iconfont-archer" data-type="qzone">&#xe62e;</li>
+                        <li class="iconfont-archer" data-type="twitter">&#xe634;</li>
+                        <li class="iconfont-archer" data-type="facebook">&#xe67a;</li>
+                    </ul>
+                </span>
+            </div>
+        
+    </div>
+</div>
+        <img class="loading" src="/assets/loading.svg" style="display: block; margin: 6rem auto 0 auto; width: 6rem; height: 6rem;" />
+
+        <div class="container container-unloaded">
+            <main class="main post-page">
+    <article class="article-entry">
+        <p>本文源码跟踪基于  1.12.6</p>
+<p><img src="https://www.do1618.com/wp-content/uploads/2019/12/CRI-CNI.jpg" alt=""></p>
+<h2 id="CRI"><a href="#CRI" class="headerlink" title="CRI"></a>CRI</h2><p><img src="https://www.do1618.com/wp-content/uploads/2019/12/cri_shim.png" alt=""></p>
+<h3 id="创建-Pod-入口"><a href="#创建-Pod-入口" class="headerlink" title="创建 Pod 入口"></a>创建 Pod 入口</h3><p>k8s.io/kubernetes/pkg/kubelet/kuberuntime/kuberuntime_manager.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// kubeGenericRuntimeManager::runtimeService:  newInstrumentedRuntimeService(runtimeService)</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// SyncPod syncs the running pod into the desired pod by executing following steps:</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">//  1. Compute sandbox and container changes.</span></span><br><span class="line"><span class="comment">//  2. Kill pod sandbox if necessary.</span></span><br><span class="line"><span class="comment">//  3. Kill any containers that should not be running.</span></span><br><span class="line"><span class="comment">//  4. Create sandbox if necessary.</span></span><br><span class="line"><span class="comment">//  5. Create init containers.</span></span><br><span class="line"><span class="comment">//  6. Create normal containers.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *kubeGenericRuntimeManager)</span> <span class="title">SyncPod</span><span class="params">(pod *v1.Pod, _ v1.PodStatus, podStatus *kubecontainer.PodStatus, pullSecrets []v1.Secret, backOff *flowcontrol.Backoff)</span> <span class="params">(result kubecontainer.PodSyncResult)</span></span> &#123;</span><br><span class="line">	<span class="comment">// Step 1: Compute sandbox and container changes.</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 2: Kill the pod if the sandbox has changed.</span></span><br><span class="line">	<span class="keyword">if</span> podContainerChanges.KillPod &#123;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">// Step 3: kill any running containers in this pod which are not to keep.</span></span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Keep terminated init containers fairly aggressively controlled</span></span><br><span class="line">	<span class="comment">// This is an optimization because container removals are typically handled</span></span><br><span class="line">	<span class="comment">// by container garbage collector.</span></span><br><span class="line">	m.pruneInitContainersBeforeStart(pod, podStatus)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// We pass the value of the podIP down to generatePodSandboxConfig and</span></span><br><span class="line">	<span class="comment">// generateContainerConfig, which in turn passes it to various other</span></span><br><span class="line">	<span class="comment">// functions, in order to facilitate functionality that requires this</span></span><br><span class="line">	<span class="comment">// value (hosts file and downward API) and avoid races determining</span></span><br><span class="line">	<span class="comment">// the pod IP in cases where a container requires restart but the</span></span><br><span class="line">	<span class="comment">// podIP isn't in the status manager yet.</span></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	<span class="comment">// We default to the IP in the passed-in pod status, and overwrite it if the</span></span><br><span class="line">	<span class="comment">// sandbox needs to be (re)started.</span></span><br><span class="line">	podIP := <span class="string">""</span></span><br><span class="line">	<span class="keyword">if</span> podStatus != <span class="literal">nil</span> &#123;</span><br><span class="line">		podIP = podStatus.IP</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 4: Create a sandbox for the pod if necessary.  </span></span><br><span class="line">  <span class="comment">// 创建使用 pause 镜像创建的 sandbox</span></span><br><span class="line">	podSandboxID := podContainerChanges.SandboxID</span><br><span class="line">	<span class="keyword">if</span> podContainerChanges.CreateSandbox &#123;</span><br><span class="line">		<span class="comment">// ...</span></span><br><span class="line">		podSandboxID, msg, err = m.createPodSandbox(pod, podContainerChanges.Attempt)</span><br><span class="line">    <span class="comment">// 底层调用 m.runtimeService.RunPodSandbox(podSandboxConfig, runtimeHandler)</span></span><br><span class="line">    </span><br><span class="line">		glog.V(<span class="number">4</span>).Infof(<span class="string">"Created PodSandbox %q for pod %q"</span>, podSandboxID, format.Pod(pod))</span><br><span class="line"></span><br><span class="line">		podSandboxStatus, err := m.runtimeService.PodSandboxStatus(podSandboxID)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Get podSandboxConfig for containers to start.</span></span><br><span class="line">	podSandboxConfig, err := m.generatePodSandboxConfig(pod, podContainerChanges.Attempt)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 5: start the init container.  启动所有的 init container </span></span><br><span class="line">	<span class="keyword">if</span> container := podContainerChanges.NextInitContainerToStart; container != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// Start the next init container.</span></span><br><span class="line">		glog.V(<span class="number">4</span>).Infof(<span class="string">"Creating init container %+v in pod %v"</span>, container, format.Pod(pod))</span><br><span class="line">		<span class="keyword">if</span> msg, err := m.startContainer(podSandboxID, podSandboxConfig, container, pod, podStatus, pullSecrets, podIP, kubecontainer.ContainerTypeInit); err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="comment">// ...</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Successfully started the container; clear the entry in the failure</span></span><br><span class="line">		glog.V(<span class="number">4</span>).Infof(<span class="string">"Completed init container %q for pod %q"</span>, container.Name, format.Pod(pod))</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 6: start containers in podContainerChanges.ContainersToStart. 启动 container </span></span><br><span class="line">	<span class="keyword">for</span> _, idx := <span class="keyword">range</span> podContainerChanges.ContainersToStart &#123;</span><br><span class="line">		container := &amp;pod.Spec.Containers[idx]</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line"></span><br><span class="line">		glog.V(<span class="number">4</span>).Infof(<span class="string">"Creating container %+v in pod %v"</span>, container, format.Pod(pod))</span><br><span class="line">		<span class="keyword">if</span> msg, err := m.startContainer(podSandboxID, podSandboxConfig, container, pod, podStatus, pullSecrets, podIP, kubecontainer.ContainerTypeRegular); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		    <span class="comment">// ...</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="CRI-接口调用和实现"><a href="#CRI-接口调用和实现" class="headerlink" title="CRI 接口调用和实现"></a>CRI 接口调用和实现</h3><p>CRI 相关文档： <a href="https://kubernetes.io/blog/2016/12/container-runtime-interface-cri-in-kubernetes/" target="_blank" rel="noopener">Introducing Container Runtime Interface (CRI) in Kubernetes</a></p>
+<p>k8s.io/kubernetes/pkg/kubelet/dockershim/docker_sandbox.go</p>
+<p>dockerService 类实现了 CRI 接口：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> dockerService <span class="keyword">struct</span> &#123;</span><br><span class="line">	client           libdocker.Interface</span><br><span class="line">	os               kubecontainer.OSInterface</span><br><span class="line">	podSandboxImage  <span class="keyword">string</span></span><br><span class="line">	streamingRuntime *streamingRuntime</span><br><span class="line">	streamingServer  streaming.Server</span><br><span class="line"></span><br><span class="line">	network *network.PluginManager   <span class="comment">// 实现了网络</span></span><br><span class="line">	<span class="comment">// Map of podSandboxID :: network-is-ready</span></span><br><span class="line">	networkReady     <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">bool</span></span><br><span class="line">	networkReadyLock sync.Mutex</span><br><span class="line"></span><br><span class="line">	containerManager cm.ContainerManager</span><br><span class="line">	<span class="comment">// cgroup driver used by Docker runtime.</span></span><br><span class="line">	cgroupDriver      <span class="keyword">string</span></span><br><span class="line">	checkpointManager checkpointmanager.CheckpointManager</span><br><span class="line">	<span class="comment">// caches the version of the runtime.</span></span><br><span class="line">	<span class="comment">// To be compatible with multiple docker versions, we need to perform</span></span><br><span class="line">	<span class="comment">// version checking for some operations. Use this cache to avoid querying</span></span><br><span class="line">	<span class="comment">// the docker daemon every time we need to do such checks.</span></span><br><span class="line">	versionCache *cache.ObjectCache</span><br><span class="line">	<span class="comment">// startLocalStreamingServer indicates whether dockershim should start a</span></span><br><span class="line">	<span class="comment">// streaming server on localhost.</span></span><br><span class="line">	startLocalStreamingServer <span class="keyword">bool</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>RuntimeService 接口定义：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// RuntimeService interface should be implemented by a container runtime.</span></span><br><span class="line"><span class="comment">// The methods should be thread-safe.</span></span><br><span class="line"><span class="keyword">type</span> RuntimeService <span class="keyword">interface</span> &#123;</span><br><span class="line">	RuntimeVersioner</span><br><span class="line">	ContainerManager</span><br><span class="line">	PodSandboxManager</span><br><span class="line">	ContainerStatsManager</span><br><span class="line"></span><br><span class="line">	<span class="comment">// UpdateRuntimeConfig updates runtime configuration if specified</span></span><br><span class="line">	UpdateRuntimeConfig(runtimeConfig *runtimeapi.RuntimeConfig) error</span><br><span class="line">	<span class="comment">// Status returns the status of the runtime.</span></span><br><span class="line">	Status() (*runtimeapi.RuntimeStatus, error)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>PodSandboxManager 接口定义：<br><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// PodSandboxManager contains methods for operating on PodSandboxes. The methods</span></span><br><span class="line"><span class="comment">// are thread-safe.</span></span><br><span class="line"><span class="keyword">type</span> PodSandboxManager <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// RunPodSandbox creates and starts a pod-level sandbox. Runtimes should ensure</span></span><br><span class="line">	<span class="comment">// the sandbox is in ready state.</span></span><br><span class="line">	RunPodSandbox(config *runtimeapi.PodSandboxConfig, runtimeHandler <span class="keyword">string</span>) (<span class="keyword">string</span>, error)</span><br><span class="line">	<span class="comment">// StopPodSandbox stops the sandbox. If there are any running containers in the</span></span><br><span class="line">	<span class="comment">// sandbox, they should be force terminated.</span></span><br><span class="line">	StopPodSandbox(podSandboxID <span class="keyword">string</span>) error</span><br><span class="line">	<span class="comment">// RemovePodSandbox removes the sandbox. If there are running containers in the</span></span><br><span class="line">	<span class="comment">// sandbox, they should be forcibly removed.</span></span><br><span class="line">	RemovePodSandbox(podSandboxID <span class="keyword">string</span>) error</span><br><span class="line">	<span class="comment">// PodSandboxStatus returns the Status of the PodSandbox.</span></span><br><span class="line">	PodSandboxStatus(podSandboxID <span class="keyword">string</span>) (*runtimeapi.PodSandboxStatus, error)</span><br><span class="line">	<span class="comment">// ListPodSandbox returns a list of Sandbox.</span></span><br><span class="line">	ListPodSandbox(filter *runtimeapi.PodSandboxFilter) ([]*runtimeapi.PodSandbox, error)</span><br><span class="line">	<span class="comment">// PortForward prepares a streaming endpoint to forward ports from a PodSandbox, and returns the address.</span></span><br><span class="line">	PortForward(*runtimeapi.PortForwardRequest) (*runtimeapi.PortForwardResponse, error)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>以 <code>RunPodSandbox</code> 接口为例：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// RunPodSandbox creates and starts a pod-level sandbox. Runtimes should ensure</span></span><br><span class="line"><span class="comment">// the sandbox is in ready state.</span></span><br><span class="line"><span class="comment">// For docker, PodSandbox is implemented by a container holding the network</span></span><br><span class="line"><span class="comment">// namespace for the pod.</span></span><br><span class="line"><span class="comment">// Note: docker doesn't use LogDirectory (yet).</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ds *dockerService)</span> <span class="title">RunPodSandbox</span><span class="params">(ctx context.Context, r *runtimeapi.RunPodSandboxRequest)</span> <span class="params">(*runtimeapi.RunPodSandboxResponse, error)</span></span> &#123;</span><br><span class="line">	config := r.GetConfig()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 1: Pull the image for the sandbox.</span></span><br><span class="line">	image := defaultSandboxImage</span><br><span class="line">	<span class="keyword">if</span> err := ensureSandboxImageExists(ds.client, image); err != <span class="literal">nil</span> &#123;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	createConfig, err := ds.makeSandboxDockerConfig(config, image)</span><br><span class="line">	createResp, err := ds.client.CreateContainer(*createConfig)</span><br><span class="line"></span><br><span class="line">	resp := &amp;runtimeapi.RunPodSandboxResponse&#123;PodSandboxId: createResp.ID&#125;</span><br><span class="line"></span><br><span class="line">	ds.setNetworkReady(createResp.ID, <span class="literal">false</span>)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 3: Create Sandbox Checkpoint.</span></span><br><span class="line">	<span class="keyword">if</span> err = ds.checkpointManager.CreateCheckpoint(createResp.ID, constructPodSandboxCheckpoint(config)); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 4: Start the sandbox container.</span></span><br><span class="line">	<span class="comment">// Assume kubelet's garbage collector would remove the sandbox later, if</span></span><br><span class="line">	<span class="comment">// startContainer failed.</span></span><br><span class="line">	err = ds.client.StartContainer(createResp.ID)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 设置 DNS config</span></span><br><span class="line">	<span class="comment">// Do not invoke network plugins if in hostNetwork mode.</span></span><br><span class="line">	<span class="keyword">if</span> config.GetLinux().GetSecurityContext().GetNamespaceOptions().GetNetwork() == runtimeapi.NamespaceMode_NODE &#123;</span><br><span class="line">		<span class="keyword">return</span> resp, <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Step 5: Setup networking for the sandbox.</span></span><br><span class="line">	<span class="comment">// All pod networking is setup by a CNI plugin discovered at startup time.</span></span><br><span class="line">	<span class="comment">// This plugin assigns the pod ip, sets up routes inside the sandbox,</span></span><br><span class="line">	<span class="comment">// creates interfaces etc. In theory, its jurisdiction ends with pod</span></span><br><span class="line">	<span class="comment">// sandbox networking, but it might insert iptables rules or open ports</span></span><br><span class="line">	<span class="comment">// on the host as well, to satisfy parts of the pod spec that aren't</span></span><br><span class="line">	<span class="comment">// recognized by the CNI standard yet.</span></span><br><span class="line">	cID := kubecontainer.BuildContainerID(runtimeName, createResp.ID)</span><br><span class="line">	err = ds.network.SetUpPod(config.GetMetadata().Namespace, config.GetMetadata().Name, cID, config.Annotations)</span><br><span class="line">	<span class="keyword">return</span> resp, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="CNI"><a href="#CNI" class="headerlink" title="CNI"></a>CNI</h2><h3 id="CNI-接口调用和实现"><a href="#CNI-接口调用和实现" class="headerlink" title="CNI 接口调用和实现"></a>CNI 接口调用和实现</h3><p>在 dockershim 模式下，<code>cniNetworkPlugin</code> 实现了 CNI 定义的接口，<code>SetUpPod</code> 函数定义如下：</p>
+<p>k8s.io/kubernetes/pkg/kubelet/dockershim/network/cni/cni.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(plugin *cniNetworkPlugin)</span> <span class="title">SetUpPod</span><span class="params">(namespace <span class="keyword">string</span>, name <span class="keyword">string</span>, id kubecontainer.ContainerID, annotations <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	netnsPath, err := plugin.host.GetNetNS(id.ID)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Windows doesn't have loNetwork. It comes only with Linux</span></span><br><span class="line">	<span class="keyword">if</span> plugin.loNetwork != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> _, err = plugin.addToNetwork(plugin.loNetwork, name, namespace, id, netnsPath, annotations); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">  </span><br><span class="line">	_, err = plugin.addToNetwork(plugin.getDefaultNetwork(), name, namespace, id, netnsPath, annotations)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>network 相关的在函数 <code>NewDockerService</code> 中初始化：</p>
+<p>k8s.io/kubernetes/pkg/kubelet/dockershim/docker_service.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewDockerService</span><span class="params">(...)</span></span>&#123;</span><br><span class="line">  <span class="comment">// dockershim currently only supports CNI plugins.</span></span><br><span class="line">  <span class="comment">// 使用传入的 cni 配置目录和bin目录，初始化插件，并供后续选择</span></span><br><span class="line">	pluginSettings.PluginBinDirs = cni.SplitDirs(pluginSettings.PluginBinDirString)</span><br><span class="line">	cniPlugins := cni.ProbeNetworkPlugins(pluginSettings.PluginConfDir, pluginSettings.PluginBinDirs)</span><br><span class="line">	cniPlugins = <span class="built_in">append</span>(cniPlugins, kubenet.NewPlugin(pluginSettings.PluginBinDirs))</span><br><span class="line">  </span><br><span class="line">    <span class="comment">// cniPlugins 传入全部的系统 CNI 插件</span></span><br><span class="line">  	plug, err := network.InitNetworkPlugin(cniPlugins, pluginSettings.PluginName, netHost, pluginSettings.HairpinMode, pluginSettings.NonMasqueradeCIDR, pluginSettings.MTU)</span><br><span class="line"></span><br><span class="line">	ds.network = network.NewPluginManager(plug)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="CNI-接口定义"><a href="#CNI-接口定义" class="headerlink" title="CNI 接口定义"></a>CNI 接口定义</h3><p>在 DockerShim 中使用 <code>cniNetworkPlugin</code> 实现了 CNI 接口，CNI 接口如下：</p>
+<p>k8s.io/kubernetes/pkg/kubelet/dockershim/network/cni/cni.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> cniNetworkPlugin <span class="keyword">struct</span> &#123;</span><br><span class="line">	network.NoopNetworkPlugin</span><br><span class="line"></span><br><span class="line">	loNetwork *cniNetwork        <span class="comment">// 指向 lo CNI 的实现，参见后续分析</span></span><br><span class="line">  defaultNetwork *cniNetwork   <span class="comment">// 指向 default CNI 的实现，参见后续分析</span></span><br><span class="line"></span><br><span class="line">	sync.RWMutex</span><br><span class="line">	defaultNetwork *cniNetwork</span><br><span class="line"></span><br><span class="line">	host        network.Host</span><br><span class="line">	execer      utilexec.Interface</span><br><span class="line">	nsenterPath <span class="keyword">string</span></span><br><span class="line">	confDir     <span class="keyword">string</span></span><br><span class="line">	binDirs     []<span class="keyword">string</span></span><br><span class="line">	podCidr     <span class="keyword">string</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>CNI 接口如下：</p>
+<p>k8s.io/kubernetes/pkg/kubelet/dockershim/network/plugins.go面向 Pod 的 <a href="https://github.com/kubernetes/kubernetes/tree/v1.16.0/pkg/kubelet/dockershim/network/plugins.go" target="_blank" rel="noopener"><code>NetworkPlugin</code> 接口</a> ，CNI 规范参见：<a href="https://github.com/containernetworking/cni/blob/master/SPEC.md#network-configuration" target="_blank" rel="noopener">https://github.com/containernetworking/cni/blob/master/SPEC.md#network-configuration</a></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Plugin is an interface to network plugins for the kubelet</span></span><br><span class="line"><span class="keyword">type</span> NetworkPlugin <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Init initializes the plugin.  This will be called exactly once</span></span><br><span class="line">	<span class="comment">// before any other methods are called.</span></span><br><span class="line">	Init(host Host, hairpinMode kubeletconfig.HairpinMode, nonMasqueradeCIDR <span class="keyword">string</span>, mtu <span class="keyword">int</span>) error</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Called on various events like:</span></span><br><span class="line">	<span class="comment">// NET_PLUGIN_EVENT_POD_CIDR_CHANGE</span></span><br><span class="line">	Event(name <span class="keyword">string</span>, details <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">interface</span>&#123;&#125;)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Name returns the plugin's name. This will be used when searching</span></span><br><span class="line">	<span class="comment">// for a plugin by name, e.g.</span></span><br><span class="line">	Name() <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Returns a set of NET_PLUGIN_CAPABILITY_*</span></span><br><span class="line">	Capabilities() utilsets.Int</span><br><span class="line"></span><br><span class="line">	<span class="comment">// SetUpPod is the method called after the infra container of</span></span><br><span class="line">	<span class="comment">// the pod has been created but before the other containers of the</span></span><br><span class="line">	<span class="comment">// pod are launched.</span></span><br><span class="line">	SetUpPod(namespace <span class="keyword">string</span>, name <span class="keyword">string</span>, podSandboxID kubecontainer.ContainerID, annotations <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">string</span>) error</span><br><span class="line"></span><br><span class="line">	<span class="comment">// TearDownPod is the method called before a pod's infra container will be deleted</span></span><br><span class="line">	TearDownPod(namespace <span class="keyword">string</span>, name <span class="keyword">string</span>, podSandboxID kubecontainer.ContainerID) error</span><br><span class="line"></span><br><span class="line">	<span class="comment">// GetPodNetworkStatus is the method called to obtain the ipv4 or ipv6 addresses of the container</span></span><br><span class="line">	GetPodNetworkStatus(namespace <span class="keyword">string</span>, name <span class="keyword">string</span>, podSandboxID kubecontainer.ContainerID) (*PodNetworkStatus, error)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Status returns error if the network plugin is in error state</span></span><br><span class="line">	Status() error</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>cniNetworkPlugin</code> 接口中包含接口 <code>CNIConfig</code>，其实现了 <code>libcni.CNI</code> 接口</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> cniNetworkPlugin <span class="keyword">struct</span> &#123;</span><br><span class="line">	network.NoopNetworkPlugin</span><br><span class="line"></span><br><span class="line">	loNetwork *cniNetwork        <span class="comment">// lo 本地端口</span></span><br><span class="line">  defaultNetwork *cniNetwork  <span class="comment">// 默认网络</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> cniNetwork <span class="keyword">struct</span> &#123;</span><br><span class="line">	name          <span class="keyword">string</span></span><br><span class="line">	NetworkConfig *libcni.NetworkConfigList</span><br><span class="line">	CNIConfig     libcni.CNI   <span class="comment">// 指向 CNI 接口定义</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>CNI 接口定义</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> CNI <span class="keyword">interface</span> &#123;</span><br><span class="line">    AddNetworkList(net *NetworkConfigList, rt *RuntimeConf) (types.Result, error)</span><br><span class="line">    DelNetworkList(net *NetworkConfigList, rt *RuntimeConf) error</span><br><span class="line"></span><br><span class="line">    AddNetwork(net *NetworkConfig, rt *RuntimeConf) (types.Result, error)</span><br><span class="line">    DelNetwork(net *NetworkConfig, rt *RuntimeConf) error</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>CNIConfig</code> 的初始化：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">ProbeNetworkPlugins</span><span class="params">(confDir <span class="keyword">string</span>, binDirs []<span class="keyword">string</span>)</span> []<span class="title">network</span>.<span class="title">NetworkPlugin</span></span> &#123;</span><br><span class="line"></span><br><span class="line">	plugin := &amp;cniNetworkPlugin&#123;</span><br><span class="line">		defaultNetwork: <span class="literal">nil</span>,</span><br><span class="line">		loNetwork:      getLoNetwork(binDirs),  <span class="comment">// lo 初始化</span></span><br><span class="line">		execer:         utilexec.New(),</span><br><span class="line">		confDir:        confDir,</span><br><span class="line">		binDirs:        binDirs,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> []network.NetworkPlugin&#123;plugin&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>getLoNetwork 函数定义：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">getLoNetwork</span><span class="params">(binDirs []<span class="keyword">string</span>)</span> *<span class="title">cniNetwork</span></span> &#123;</span><br><span class="line">	loConfig, err := libcni.ConfListFromBytes([]<span class="keyword">byte</span>(<span class="string">`&#123;</span></span><br><span class="line"><span class="string">  "cniVersion": "0.2.0",</span></span><br><span class="line"><span class="string">  "name": "cni-loopback",</span></span><br><span class="line"><span class="string">  "plugins":[&#123;</span></span><br><span class="line"><span class="string">    "type": "loopback"</span></span><br><span class="line"><span class="string">  &#125;]</span></span><br><span class="line"><span class="string">&#125;`</span>))</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// The hardcoded config above should always be valid and unit tests will</span></span><br><span class="line">		<span class="comment">// catch this</span></span><br><span class="line">		<span class="built_in">panic</span>(err)</span><br><span class="line">	&#125;</span><br><span class="line">	loNetwork := &amp;cniNetwork&#123;</span><br><span class="line">		name:          <span class="string">"lo"</span>,</span><br><span class="line">		NetworkConfig: loConfig,</span><br><span class="line">		CNIConfig:     &amp;libcni.CNIConfig&#123;Path: binDirs&#125;,</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> loNetwork</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>cniNetworkPlugin</code> 结构体中默认网络字段 <code>defaultNetwork</code> 的初始化如下，该函数在 <code>cni.ProbeNetworkPlugins</code> 函数中被调用：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(plugin *cniNetworkPlugin)</span> <span class="title">syncNetworkConfig</span><span class="params">()</span></span> &#123;</span><br><span class="line">	network, err := getDefaultCNINetwork(plugin.confDir, plugin.binDirs)</span><br><span class="line">	plugin.setDefaultNetwork(network)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>getDefaulgotCNINetwork</code> 的定义如下，主要工作是从 CNI 的 conf 目录中读取 conf 文件，完成默认 network 的配置初始化：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">getDefaulgotCNINetwork</span><span class="params">(confDir <span class="keyword">string</span>, binDirs []<span class="keyword">string</span>)</span> <span class="params">(*cniNetwork, error)</span></span> &#123;</span><br><span class="line">	files, err := libcni.ConfFiles(confDir, []<span class="keyword">string</span>&#123;<span class="string">".conf"</span>, <span class="string">".conflist"</span>, <span class="string">".json"</span>&#125;)</span><br><span class="line">	<span class="keyword">switch</span> &#123;</span><br><span class="line">	<span class="keyword">case</span> err != <span class="literal">nil</span>:</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">	<span class="keyword">case</span> <span class="built_in">len</span>(files) == <span class="number">0</span>:</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, fmt.Errorf(<span class="string">"No networks found in %s"</span>, confDir)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	sort.Strings(files)</span><br><span class="line">	<span class="keyword">for</span> _, confFile := <span class="keyword">range</span> files &#123;</span><br><span class="line">		<span class="keyword">var</span> confList *libcni.NetworkConfigList</span><br><span class="line">		<span class="keyword">if</span> strings.HasSuffix(confFile, <span class="string">".conflist"</span>) &#123;</span><br><span class="line">			confList, err = libcni.ConfListFromFile(confFile)</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			conf, err := libcni.ConfFromFile(confFile)</span><br><span class="line"></span><br><span class="line">			<span class="comment">// Ensure the config has a "type" so we know what plugin to run.</span></span><br><span class="line">			<span class="comment">// Also catches the case where somebody put a conflist into a conf file.</span></span><br><span class="line">			<span class="keyword">if</span> conf.Network.Type == <span class="string">""</span> &#123;</span><br><span class="line">				glog.Warningf(<span class="string">"Error loading CNI config file %s: no 'type'; perhaps this is a .conflist?"</span>, confFile)</span><br><span class="line">				<span class="keyword">continue</span></span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			confList, err = libcni.ConfListFromConf(conf)</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				glog.Warningf(<span class="string">"Error converting CNI config file %s to list: %v"</span>, confFile, err)</span><br><span class="line">				<span class="keyword">continue</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">len</span>(confList.Plugins) == <span class="number">0</span> &#123;</span><br><span class="line">			glog.Warningf(<span class="string">"CNI config list %s has no networks, skipping"</span>, confFile)</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		glog.V(<span class="number">4</span>).Infof(<span class="string">"Using CNI configuration file %s"</span>, confFile)</span><br><span class="line"></span><br><span class="line">		network := &amp;cniNetwork&#123;</span><br><span class="line">			name:          confList.Name,</span><br><span class="line">			NetworkConfig: confList,</span><br><span class="line">			CNIConfig:     &amp;libcni.CNIConfig&#123;Path: binDirs&#125;,</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> network, <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span>, fmt.Errorf(<span class="string">"No valid networks found in %s"</span>, confDir)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+    </article>
+    <!-- 前后页  -->
+    <ul class="post-paginator">
+        <li class="next">
+            
+                <div class="nextSlogan">Next Post</div>
+                <a href="/2019/12/02/serverless/" title="Serverless" 漫谈="">
+                    <div class="nextTitle">Serverless 漫谈</div>
+                </a>
+            
+        </li>
+        <li class="previous">
+            
+                <div class="prevSlogan">Previous Post</div>
+                <a href="/2019/12/02/kube-scheduler-source/" title="Kube-Scheduler" 源码剖析="">
+                    <div class="prevTitle">Kube-Scheduler 源码剖析</div>
+                </a>
+            
+        </li>
+    </ul>
+    <!-- 评论插件 -->
+    <!-- 来必力City版安装代码 -->
+
+<!-- City版安装代码已完成 -->
+    
+    <div id="disqus_thread"></div>
+    <script>
+        /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+        
+        var disqus_config = function () {
+        this.page.url = "http://www.cn18k.com/2019/12/02/kubelet-cri-cni/";  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = "Kubelet - Pod 创建之 CRI 和 CNI 源码剖析"; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+        };
+        
+        (function () { // DON'T EDIT BELOW THIS LINE
+            var d = document, s = d.createElement('script');
+            s.src = 'https://cn18k.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+        })();
+
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+
+    
+    <!--PC版-->
+
+    <!--PC版-->
+
+
+    
+    <!-- 评论 -->
+</main>
+            <!-- profile -->
+            
+        </div>
+        <footer class="footer footer-unloaded">
+    <!-- social  -->
+    
+    <div class="social">
+        
+    
+        
+            
+                <a href="mailto:15267341@qq.com" class="iconfont-archer email" title="email"></a>
+            
+        
+    
+        
+            
+                <a href="https://github.com/DavadDi" class="iconfont-archer github" target="_blank" title="github"></a>
+            
+        
+    
+        
+            
+                <span class="iconfont-archer wechat" title="wechat">
+                  
+                  <img class="profile-qr" src="/assets/weixin_qr.jpeg">
+                </span>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="https://twitter.com/DavadDi" class="iconfont-archer twitter" target="_blank" title="twitter"></a>
+            
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+                <a href="/atom.xml" class="iconfont-archer rss" target="_blank" title="rss"></a>
+            
+        
+    
+
+    </div>
+    
+    <!-- powered by Hexo  -->
+    <div class="copyright">
+        <span id="hexo-power">Powered by <a href="https://hexo.io/" target="_blank">Hexo</a></span><span class="iconfont-archer power">&#xe635;</span><span id="theme-info">theme <a href="https://github.com/fi3ework/hexo-theme-archer" target="_blank">Archer</a></span>
+    </div>
+    <!-- 不蒜子  -->
+    
+    <div class="busuanzi-container">
+        <span id="busuanzi_container_site_pv">PV: <span id="busuanzi_value_site_pv"></span>
+        </span>
+    </div>
+    
+</footer>
+    </div>
+    <!-- toc -->
+    
+    <div class="toc-wrapper" style=
+    
+
+
+
+
+
+
+
+top:50vh;
+
+    >
+        <div class="toc-catalog">
+            <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
+        </div>
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#CRI"><span class="toc-number">1.</span> <span class="toc-text">CRI</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#创建-Pod-入口"><span class="toc-number">1.1.</span> <span class="toc-text">创建 Pod 入口</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#CRI-接口调用和实现"><span class="toc-number">1.2.</span> <span class="toc-text">CRI 接口调用和实现</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CNI"><span class="toc-number">2.</span> <span class="toc-text">CNI</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#CNI-接口调用和实现"><span class="toc-number">2.1.</span> <span class="toc-text">CNI 接口调用和实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#CNI-接口定义"><span class="toc-number">2.2.</span> <span class="toc-text">CNI 接口定义</span></a></li></ol></li></ol>
+    </div>
+    
+    <div class="back-top iconfont-archer">&#xe639;</div>
+    <div class="sidebar sidebar-hide">
+    <ul class="sidebar-tabs sidebar-tabs-active-0">
+        <li class="sidebar-tab-archives"><span class="iconfont-archer">&#xe67d;</span><span class="tab-name">Archive</span></li>
+        <li class="sidebar-tab-tags"><span class="iconfont-archer">&#xe61b;</span><span class="tab-name">Tag</span></li>
+        <li class="sidebar-tab-categories"><span class="iconfont-archer">&#xe666;</span><span class="tab-name">Cate</span></li>
+    </ul>
+    <div class="sidebar-content sidebar-content-show-archive">
+          <div class="sidebar-panel-archives">
+    <!-- 在ejs中将archive按照时间排序 -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <div class="total-archive"> Total : 45 </div>
+    
+    <div class="post-archive">
+    
+    
+    
+    
+    <div class="archive-year"> 2019 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/serverless/">Serverless 漫谈</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/kubelet-cri-cni/">Kubelet - Pod 创建之 CRI 和 CNI 源码剖析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/02</span><a class="archive-post-title" href="/2019/12/02/kube-scheduler-source/">Kube-Scheduler 源码剖析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/05</span><a class="archive-post-title" href="/2019/03/05/service-mesh-intro/">下一代微服务 ServiceMesh 介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/15</span><a class="archive-post-title" href="/2019/02/15/istio-source-mixer/">Istio源码系列4：mixer 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/08</span><a class="archive-post-title" href="/2019/02/08/istio-source-pilot/">Istio源码系列3：pilot-discovery 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/06</span><a class="archive-post-title" href="/2019/02/06/istio-source-citadel/">Istio源码系列2：citadel 源码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">02/02</span><a class="archive-post-title" href="/2019/02/02/istio-source-pilot-agent/">Istio源码系列1：pilot-agent 源码分析</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2018 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">12/13</span><a class="archive-post-title" href="/2018/12/13/from-fragmented-microservices-ecosystem-to-service-mesh/">从百家争鸣的微服务生态到服务网格（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/25</span><a class="archive-post-title" href="/2018/10/25/k8s-dns/">Kubernetes DNS 入门指南</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">10/09</span><a class="archive-post-title" href="/2018/10/09/container-runtime-k8s/">容器技术与 K8S 集成介绍</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/29</span><a class="archive-post-title" href="/2018/09/29/kubernets-container-runtime/">为 Kubernetes 选择合适的 container runtime（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/26</span><a class="archive-post-title" href="/2018/09/26/xds-protocol/">xDS REST 和 gRPC 协议（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/13</span><a class="archive-post-title" href="/2018/09/13/Prometheus-Discovery-K8S/">Prometheus Discovery 之 K8S 代码分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/07</span><a class="archive-post-title" href="/2018/09/07/grpc-loadbanlancer/">gRPC 之 LoadBalancer</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc-interceptors/">gRPC 之 Interceptors</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">09/01</span><a class="archive-post-title" href="/2018/09/01/grpc_gateway/">gRPC 之 Gateway</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">08/03</span><a class="archive-post-title" href="/2018/08/03/serverless-openfaas/">Serverless 之 OpenFaaS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/31</span><a class="archive-post-title" href="/2018/07/31/goroutine_leak/">Goroutine 泄露 (译)</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/21</span><a class="archive-post-title" href="/2018/07/21/getting_to_go/">走进 Go 的垃圾回收之旅（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/distributed-tracing-istio-and-your-applications/">分布式跟踪：Istio与应用程序（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">07/13</span><a class="archive-post-title" href="/2018/07/13/no_es_node_available/">no Elasticsearch node available</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/28</span><a class="archive-post-title" href="/2018/06/28/envoy_eds/">Hello Envoy EDS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/21</span><a class="archive-post-title" href="/2018/06/21/OpenID_OAuth2_SAML/">身份验证和授权：OpenID vs OAuth2与SAML （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">06/20</span><a class="archive-post-title" href="/2018/06/20/JWT/">JSON Web Token</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">05/10</span><a class="archive-post-title" href="/2018/05/10/go_escape_analysis/">Go 内存逃逸详细分析</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/20</span><a class="archive-post-title" href="/2018/04/20/es-index-type/">ES 中的索引与类型的前生今世</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/15</span><a class="archive-post-title" href="/2018/04/15/istio-microservice-security/">服务网格如何帮助微服务安全？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/11</span><a class="archive-post-title" href="/2018/04/11/Introducing-Operators/">Operators 介绍（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/07</span><a class="archive-post-title" href="/2018/04/07/Kubernetes-Deep-Dive-API-Server-part3a/">Kubernets深入系列： API Server - part 3a（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/06</span><a class="archive-post-title" href="/2018/04/06/Kubernetes-Deep-Dive-API-Server-part2/">Kubernets深入系列： API Server - part 2（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/05</span><a class="archive-post-title" href="/2018/04/05/Kubernetes-Deep-Dive-API-Server-part1/">Kubernets深入系列： API Server - part 1（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/04</span><a class="archive-post-title" href="/2018/04/04/Kubernetes-Deep-Dive-Code-Generation-for-CustomResources/">Kubernets深入系列： 为自定义资源生成代码（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">04/02</span><a class="archive-post-title" href="/2018/04/02/Google-Cloud-Translation-API/">Google Cloud Translation API 入门</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/28</span><a class="archive-post-title" href="/2018/03/28/client-go-controller/">使用 client-go 开发 controller</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/23</span><a class="archive-post-title" href="/2018/03/23/gke_istio_microservices_3/">Google Kubernetes引擎上使用Istio简化微服务 — 第 III 部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/21</span><a class="archive-post-title" href="/2018/03/21/kubernetes-nodeport-vs-loadbalancer-vs-ingress/">Kubernetes NodePort vs LoadBalancer vs Ingress？ 我们应该什么时候使用？（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/20</span><a class="archive-post-title" href="/2018/03/20/letsencrypt_certbot/">Lets Encrypt = Free 100% HTTPS</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2018/03/18/dust-in-spring/">春日浮尘</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/wordpress_wpeditormd_500/">WP-Editor.MD升级后 500问题解决</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/14</span><a class="archive-post-title" href="/2018/03/14/gke_istio_microservices_2/">Google Kubernetes引擎上使用Istio简化微服务 — 第II部分 （译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/12</span><a class="archive-post-title" href="/2018/03/12/gke_istio_microservices_1/">Google Kubernetes引擎上使用Istio简化微服务 — 第I部分（译）</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/19</span><a class="archive-post-title" href="/2018/01/19/kubeadm_centos7.4_install/">Kubeadm@Centos 7.4 安装 Kubernetes 1.9.1</a>
+        </li>
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">01/01</span><a class="archive-post-title" href="/2018/01/01/tools/">研发工具集</a>
+        </li>
+    
+    
+    
+    
+    
+        </ul>
+    
+    <div class="archive-year"> 2017 </div>
+    <ul class="year-list">
+    
+    
+        <li class="archive-post-item">
+            <span class="archive-post-date">03/18</span><a class="archive-post-title" href="/2017/03/18/miss/">思念</a>
+        </li>
+    
+    </ul></div>
+  </div>
+        <div class="sidebar-panel-tags">
+    <div class="sidebar-tags-name">
+    
+        <span class="sidebar-tag-name" data-tags="Google Cloud"><span class="iconfont-archer">&#xe606;</span>Google Cloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
+    
+        <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
+    
+        <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
+        <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
+    
+        <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
+    
+        <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
+    
+        <span class="sidebar-tag-name" data-tags="dns"><span class="iconfont-archer">&#xe606;</span>dns</span>
+    
+        <span class="sidebar-tag-name" data-tags="clusterfirst"><span class="iconfont-archer">&#xe606;</span>clusterfirst</span>
+    
+        <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
+    
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
+    
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
+    
+        <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
+    
+        <span class="sidebar-tag-name" data-tags="OpenID"><span class="iconfont-archer">&#xe606;</span>OpenID</span>
+    
+        <span class="sidebar-tag-name" data-tags="SAML"><span class="iconfont-archer">&#xe606;</span>SAML</span>
+    
+        <span class="sidebar-tag-name" data-tags="SpringCloud"><span class="iconfont-archer">&#xe606;</span>SpringCloud</span>
+    
+        <span class="sidebar-tag-name" data-tags="grpc"><span class="iconfont-archer">&#xe606;</span>grpc</span>
+    
+        <span class="sidebar-tag-name" data-tags="NodePort"><span class="iconfont-archer">&#xe606;</span>NodePort</span>
+    
+        <span class="sidebar-tag-name" data-tags="LoadBalancer"><span class="iconfont-archer">&#xe606;</span>LoadBalancer</span>
+    
+        <span class="sidebar-tag-name" data-tags="Ingress"><span class="iconfont-archer">&#xe606;</span>Ingress</span>
+    
+        <span class="sidebar-tag-name" data-tags="openfaas"><span class="iconfont-archer">&#xe606;</span>openfaas</span>
+    
+        <span class="sidebar-tag-name" data-tags="CustomResourceDefinitions"><span class="iconfont-archer">&#xe606;</span>CustomResourceDefinitions</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-gen， code-generation"><span class="iconfont-archer">&#xe606;</span>client-gen， code-generation</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubenetes"><span class="iconfont-archer">&#xe606;</span>kubenetes</span>
+    
+        <span class="sidebar-tag-name" data-tags="prometheus"><span class="iconfont-archer">&#xe606;</span>prometheus</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubelet"><span class="iconfont-archer">&#xe606;</span>kubelet</span>
+    
+        <span class="sidebar-tag-name" data-tags="cni"><span class="iconfont-archer">&#xe606;</span>cni</span>
+    
+        <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
+    
+        <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
+    
+        <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
+    
+        <span class="sidebar-tag-name" data-tags="controller"><span class="iconfont-archer">&#xe606;</span>controller</span>
+    
+        <span class="sidebar-tag-name" data-tags="scheduler"><span class="iconfont-archer">&#xe606;</span>scheduler</span>
+    
+        <span class="sidebar-tag-name" data-tags="kubeadm"><span class="iconfont-archer">&#xe606;</span>kubeadm</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-tags-empty">&#xe678;</div>
+    <div class="tag-load-fail" style="display: none; color: #ccc; font-size: 0.6rem;">
+    缺失模块。<br>
+    1、请确保node版本大于6.2<br>
+    2、在博客根目录（注意不是archer根目录）执行以下命令：<br>
+    <span style="color: #f75357; font-size: 1rem; line-height: 2rem;">npm i hexo-generator-json-content --save</span><br>
+    3、在根目录_config.yml里添加配置：
+    <pre style="color: #787878; font-size: 0.6rem;">
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: true
+    tags: true</pre>
+    </div> 
+    <div class="sidebar-tags-list"></div>
+</div>
+        <div class="sidebar-panel-categories">
+    <div class="sidebar-categories-name">
+    
+        <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
+        <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
+    
+        <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
+    
+        <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
+    
+        <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
+    
+        <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
+    
+    </div>
+    <div class="iconfont-archer sidebar-categories-empty">&#xe678;</div>
+    <div class="sidebar-categories-list"></div>
+</div>
+    </div>
+</div> 
+    <script>
+    var siteMeta = {
+        root: '/',
+        author: 'Davad.di'
+    }
+</script>
+    <!-- busuanzi  -->
+    
+    <script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    
+    <!-- CNZZ  -->
+    
+    </div>
+    <!-- async load share.js -->
+    
+        <script src="/scripts/share.js" async></script>    
+    
+    </body>
+</html>
+
+
