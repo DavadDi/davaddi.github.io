@@ -374,7 +374,7 @@
 <li>允许操纵对象的状态，例如 Pods 和 Services</li>
 <li>在分布式存储（etcd）中保存对象的状态</li>
 </ul>
-<p><img src="https://d33ypg4xwx0n86.cloudfront.net/direct?url=https%3A%2F%2Fblog.openshift.com%2Fwp-content%2Fuploads%2FAPI-server-overview-1024x598.png&amp;resize=w1408" alt="img"></p>
+<p><img src="https://www.openshift.com/hs-fs/hubfs/Imported_Blog_Media/API-server-overview-1024x598.png?width=800&amp;height=467&amp;name=API-server-overview-1024x598.png" alt="img"></p>
 <p>Kubernetes API 是以 JSON 作为其主要序列化模式的 HTTP API，也支持 Protocol Buffers，Protocol Buffers 方式主要用于集群内部通信。出于可扩展性的考虑，Kubernetes 支持不同 API 路径的多个 API 版本，例如 <code>/api/v1</code> 或 <code>apis/extensions/v1beta1</code>。不同的API版本意味着不同级别的稳定性和支持：</p>
 <ul>
 <li>Alpha 级别，例如 <code>v1alpha1</code> 在默认情况下处于禁用状态，对功能的支持可能会随时废弃，而不再通知，应仅用于短期测试群集；</li>
@@ -383,7 +383,7 @@
 </ul>
 <p>现在我们来看看 HTTP API 空间是如何构建的。在顶层我们区分核心组（core group）（由于历史原因， <code>/api/v1</code> 并没有位于路径 <code>/apis/core/v1</code>下面）和系统范围的实体（如<code>/metrics</code>）。</p>
 <p>HTTP API 空间下（基于 <a href="https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.5/api/openapi-spec/swagger.json" target="_blank" rel="noopener">v1.5</a>）的部分结构如下所示：</p>
-<p><img src="https://d33ypg4xwx0n86.cloudfront.net/direct?url=https%3A%2F%2Fblog.openshift.com%2Fwp-content%2Fuploads%2FAPI-server-space-1024x604.png&amp;resize=w1408" alt="img"></p>
+<p><img src="https://www.openshift.com/hs-fs/hubfs/Imported_Blog_Media/API-server-space-1024x604.png?width=800&amp;height=472&amp;name=API-server-space-1024x604.png" alt="img"></p>
 <p>接下来我们将专注于一个具体的例子：批量操作。 在 Kubernetes 1.5 中，存在两种版本的批处理操作：<code>/apis/batch/v1</code> 和 <code>/apis/batch/v2alpha1</code>，公开可以查询和操作的不同实体集合。</p>
 <p>现在我们将注意力转向与 API 交互示例（我们正在使用 <a href="https://docs.openshift.org/latest/minishift/getting-started/installing.html" target="_blank" rel="noopener">Minishift</a> 和代理命令 <code>oc proxy --port=8080</code>此处直接访问API）：</p>
 <figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ curl http://127.0.0.1:8080/apis/batch/v1</span><br><span class="line">&#123;</span><br><span class="line">  <span class="attr">"kind"</span>: <span class="string">"APIResourceList"</span>,</span><br><span class="line">  <span class="attr">"apiVersion"</span>: <span class="string">"v1"</span>,</span><br><span class="line">  <span class="attr">"groupVersion"</span>: <span class="string">"batch/v1"</span>,</span><br><span class="line">  <span class="attr">"resources"</span>: [</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="attr">"name"</span>: <span class="string">"jobs"</span>,</span><br><span class="line">      <span class="attr">"namespaced"</span>: <span class="literal">true</span>,</span><br><span class="line">      <span class="attr">"kind"</span>: <span class="string">"Job"</span></span><br><span class="line">    &#125;,</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="attr">"name"</span>: <span class="string">"jobs/status"</span>,</span><br><span class="line">      <span class="attr">"namespaced"</span>: <span class="literal">true</span>,</span><br><span class="line">      <span class="attr">"kind"</span>: <span class="string">"Job"</span></span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
@@ -404,7 +404,7 @@
 <p><strong>Version</strong> 每个 <code>API Group</code> 可以存在多个版本。 例如一个组首先显示为 <code>v1alpha1</code>，然后提升为 <code>v1beta1</code>，最后稳定为 <code>v1</code>。 在一个版本（例如 <code>v1beta1</code>）中创建的对象可以在每个受支持版本（例如 <code>v1</code>）中检索。 API Server 进行无损转换以返回请求版本中的对象。 </p>
 <p><strong>Resource</strong> 是通过 HTTP 发送或检索为 JSON 的系统实体的表示形式；可以作为单个资源（例如 <code>.../namespaces/default</code>）或资源集合（如 <code>.../jobs</code> ）显示。</p>
 <p>API Group, Version 和 Resource (GVR) 可以唯一定义在一个 HTTP 路径下：</p>
-<p><img src="https://d33ypg4xwx0n86.cloudfront.net/direct?url=https%3A%2F%2Fblog.openshift.com%2Fwp-content%2Fuploads%2FAPI-server-gvr.png&amp;resize=w1408" alt="img"></p>
+<p><img src="https://www.openshift.com/hs-fs/hubfs/Imported_Blog_Media/API-server-gvr.png?width=400&amp;height=152&amp;name=API-server-gvr.png" alt="img"></p>
 <p>更确切地说，<code>Job</code> 的实际路径是 <code>/apis/batch/v1/namespaces/$NAMESPACE/job</code>，因为 <code>job</code> 不是集群范围内的资源，与节点资源相反（节点资源属于集群范围内资源）。 为简洁起见，在文章中我们省略了<code>$NAMESPACE</code>段路径。</p>
 <p>需要注意，<code>Kinds</code> 不仅可以存在于不同的版本中，还可以同时存在于不同的 API Group 中。 例如 Deployment 在扩展组中以 <code>alpha</code> 类型开始，最终在其自己的组 <code>apps.k8s.io</code> 中升级为 <code>GA</code> 版本。 因此要唯一标识 <code>Kind</code>，您需要 API Group，Version 和 Kind 名称（GVK）。</p>
 <h2 id="请求处理流程"><a href="#请求处理流程" class="headerlink" title="请求处理流程"></a>请求处理流程</h2><p>回顾了 Kubernetes API 中使用的术语以后，我们继续讨论如何处理 API 请求。 API 位于  <a href="https://github.com/kubernetes/kubernetes/tree/master/pkg/api" target="_blank" rel="noopener">k8s.io/pkg/api</a> 中，处理来自集群内外部客户端的请求。</p>
@@ -598,12 +598,6 @@ top:50vh;
     <div class="sidebar-content sidebar-content-show-archive">
           <div class="sidebar-panel-archives">
     <!-- 在ejs中将archive按照时间排序 -->
-    
-    
-    
-    
-    
-    
     
     
     
@@ -1485,9 +1479,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
-        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
-    
         <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
     
         <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
     
@@ -1497,19 +1491,19 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
     
-        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
     
         <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
-        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
     
-        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
@@ -1604,9 +1598,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
     
-        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
-    
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
     

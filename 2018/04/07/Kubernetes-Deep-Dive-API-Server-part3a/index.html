@@ -373,7 +373,7 @@
 </ol>
 <p>此外，在扩展的上下文中，我们将讨论对象生命周期（从初始化到入场到终结）。 我们将在两篇文章中介绍 CRD的主题，因为它相当复杂（elaborate），我们正在处理 1.7 到 1.8 版本中的迁移工作。 在这篇文章中，我们关注 CRD，第二部分我们将向您展示如何为它编写自定义控制器，包括使用 kube-gen 生成代码。</p>
 <h2 id="声明和创建-CRD"><a href="#声明和创建-CRD" class="headerlink" title="声明和创建 CRD"></a>声明和创建 CRD</h2><p>正如我们在<a href="https://blog.openshift.com/kubernetes-deep-dive-api-server-part-1/" target="_blank" rel="noopener">第1部分</a>中讨论的那样，资源按 API Groups 分组，每个版本都有相应的 HTTP 路径。 现在，如果您要实现 CRD，首先要命名一个不能与现有核心组重叠的新 API Group。 在您自己的 API Group 中，您可以拥有尽可能多的资源，并且可以使用与其他组中可能存在的名称相同的名称。 我们来看一个具体的例子：</p>
-<p><img src="https://blog.openshift.com/wp-content/uploads/CRD-yaml-example-1024x637.png" alt="img"></p>
+<p><img src="https://www.openshift.com/hs-fs/hubfs/Imported_Blog_Media/CRD-yaml-example-1024x637.png?width=500&amp;name=CRD-yaml-example-1024x637.png" alt="img"></p>
 <p>我们区分 CRD 与自定义资源 CR，CRD 就像面向对象编程中的类定义，而 CR 则可以看做是对应的类实例。 首先我们看一下类定义：在上面的第 1 行中，您会看到在 CRD 中必须使用 <code>apiVersion</code> ; kube-apiserver 1.7 和更高版本都支持该功能。 在第 5 行及以下，您使用 <code>spec</code> 字段来定义： </p>
 <ul>
 <li>第 6 行：CRD API 组（在我们的案例中，一个好的做法是使用组织的完整域名，如 example.com。</li>
@@ -408,7 +408,7 @@
 <p>在原始会话中，您启动了<code>curl</code> <code>watch</code>命令，现在可以从 API Server 看到实时更新：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&#123;<span class="string">"type"</span>:<span class="string">"DELETED"</span>,<span class="string">"object"</span>:&#123;<span class="string">"apiVersion"</span>:<span class="string">"example.com/v1"</span>,<span class="string">"kind"</span>:<span class="string">"Database"</span>,<span class="string">"metadata"</span>:&#123;<span class="string">"clusterName"</span>:<span class="string">""</span>,<span class="string">"creationTimestamp"</span>:<span class="string">"2017-0[0/515]</span></span><br><span class="line"><span class="string">:38:30Z"</span>,<span class="string">"deletionGracePeriodSeconds"</span>:null,<span class="string">"deletionTimestamp"</span>:null,<span class="string">"name"</span>:<span class="string">"wordpress"</span>,<span class="string">"namespace"</span>:<span class="string">"default"</span>,<span class="string">"resourceVersion"</span>:<span class="string">"2154"</span>,<span class="string">"selfLink"</span>:<span class="string">"/apis/example.com/v1/namespaces/</span></span><br><span class="line"><span class="string">default/databases/wordpress"</span>,<span class="string">"uid"</span>:<span class="string">"8101a7af-7ce6-11e7-888c-42010a9a0fd5"</span>&#125;,<span class="string">"spec"</span>:&#123;<span class="string">"encoding"</span>:<span class="string">"unicode"</span>,<span class="string">"password"</span>:<span class="string">"secret"</span>,<span class="string">"user"</span>:<span class="string">"wp"</span>&#125;&#125;&#125;</span><br></pre></td></tr></table></figure>
 <p>综合起来，使用三个 shell 会话（底部的初始<code>kube proxy</code> 命令的附加命令），上面的命令和相应的输出如下所示：</p>
-<p><img src="https://blog.openshift.com/wp-content/uploads/CRD-wp-state-change-screenshot.png" alt="img"></p>
+<p><img src="https://www.openshift.com/hs-fs/hubfs/Imported_Blog_Media/CRD-wp-state-change-screenshot.png?width=3092&amp;height=1950&amp;name=CRD-wp-state-change-screenshot.png" alt="img"></p>
 <p>最后，让我们看看 <code>database</code> CRD的各个数据在 etcd 中如何存储的。 在下面我们直接通过 HTTP API 访问主节点上的 etcd：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ curl -s localhost:2379/v2/keys/registry/example.com/databases/default | jq .</span><br><span class="line">&#123;</span><br><span class="line">  <span class="string">"action"</span>: <span class="string">"get"</span>,</span><br><span class="line">  <span class="string">"node"</span>: &#123;</span><br><span class="line">    <span class="string">"key"</span>: <span class="string">"/registry/example.com/databases/default"</span>,</span><br><span class="line">    <span class="string">"dir"</span>: <span class="literal">true</span>,</span><br><span class="line">    <span class="string">"nodes"</span>: [</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="string">"key"</span>: <span class="string">"/registry/example.com/databases/default/wordpress"</span>,</span><br><span class="line">        <span class="string">"value"</span>: <span class="string">"&#123;\"apiVersion\":\"example.com/v1\",\"kind\":\"Database\",\"metadata\":&#123;\"clusterName\":\"\",\"creationTimestamp\":\"2017-08-09T14:53:40Z\",\"deletionGracePeriodSeconds\":null,\"deletionTimestamp\":null,\"name\":\"wordpress\",\"namespace\":\"default\",\"selfLink\":\"\",\"uid\":\"8837f788-7d12-11e7-9d28-080027390640\"&#125;,\"spec\":&#123;\"encoding\":\"unicode\",\"password\":\"secret\",\"user\":\"wp\"&#125;&#125;\n"</span>,</span><br><span class="line">        <span class="string">"modifiedIndex"</span>: 670,</span><br><span class="line">        <span class="string">"createdIndex"</span>: 670</span><br><span class="line">      &#125;</span><br><span class="line">    ],</span><br><span class="line">    <span class="string">"modifiedIndex"</span>: 670,</span><br><span class="line">    <span class="string">"createdIndex"</span>: 670</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>从上面的 etcd 资源转储中可以看到，CRD 数据本质上是一个未解析的 blob。</p>
@@ -601,12 +601,6 @@ top:50vh;
     <div class="sidebar-content sidebar-content-show-archive">
           <div class="sidebar-panel-archives">
     <!-- 在ejs中将archive按照时间排序 -->
-    
-    
-    
-    
-    
-    
     
     
     
@@ -1488,9 +1482,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
-        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
-    
         <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
     
         <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
     
@@ -1500,19 +1494,19 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
     
-        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
     
         <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
-        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
     
-        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
@@ -1607,9 +1601,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
     
-        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
-    
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
     

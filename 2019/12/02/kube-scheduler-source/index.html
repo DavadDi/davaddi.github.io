@@ -525,7 +525,7 @@
 <blockquote>
 <p>调取器的名字并没有统一保存在 apiserver 中进行统一管理，而是每个调取器去 apiserver 中获取和自己名字一直的 pod 来调度。也就是说，调度器是自己管理名字的，因此做到不冲突而且逻辑正确是每个调度器的工作。</p>
 </blockquote>
-<p>一个非常简单的 shell 调度器，它通过 <code>kubectl</code> 命令从 apiserver 获取未调度的 pod（<code>spec.schedulerName</code> 是 <code>my-scheduler</code>，并且<code>spec.nodeName</code> 为空），同样地，用 <code>kubectl</code> 从 apiserver 获取 nodes 的信息，然后随机选择一个 node 作为调度结果，并写入到 apiserver 中。更加详细的可以参见 <a href="https://github.com/kelseyhightower/scheduler" target="_blank" rel="noopener">https://github.com/kelseyhightower/scheduler</a> 和 <a href="https://banzaicloud.com/blog/k8s-custom-scheduler/" target="_blank" rel="noopener">Writing custom Kubernetes schedulers</a></p>
+<p>一个非常简单的 shell 调度器，它通过 <code>kubectl</code> 命令从 apiserver 获取未调度的 pod（<code>spec.schedulerName</code> 是 <code>my-scheduler</code>，并且<code>spec.nodeName</code> 为空），同样地，用 <code>kubectl</code> 从 apiserver 获取 nodes 的信息，然后随机选择一个 node 作为调度结果，并写入到 apiserver 中。更加详细的可以参见 <a href="https://github.com/kelseyhightower/scheduler" target="_blank" rel="noopener">https://github.com/kelseyhightower/scheduler</a> 和 <a href="https://banzaicloud.com/blog/k8s-custom-scheduler/" target="_blank" rel="noopener">Writing custom Kubernetes schedulers</a>，还有 <a href="https://github.com/martonsereg/random-scheduler" target="_blank" rel="noopener">https://github.com/martonsereg/random-scheduler</a></p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">SERVER=<span class="string">'localhost:8001'</span></span><br><span class="line"><span class="keyword">while</span> <span class="literal">true</span>;</span><br><span class="line"><span class="keyword">do</span></span><br><span class="line">    <span class="keyword">for</span> PODNAME <span class="keyword">in</span> $(kubectl --server <span class="variable">$SERVER</span> get pods -o json | jq <span class="string">'.items[] | select(.spec.schedulerName == "my-scheduler") | select(.spec.nodeName == null) | .metadata.name'</span> | tr -d <span class="string">'"'</span>)</span><br><span class="line">;</span><br><span class="line">    <span class="keyword">do</span></span><br><span class="line">        NODES=($(kubectl --server <span class="variable">$SERVER</span> get nodes -o json | jq <span class="string">'.items[].metadata.name'</span> | tr -d <span class="string">'"'</span>))</span><br><span class="line">        NUMNODES=<span class="variable">$&#123;#NODES[@]&#125;</span></span><br><span class="line">        CHOSEN=<span class="variable">$&#123;NODES[$[ $RANDOM % $NUMNODES ]]&#125;</span></span><br><span class="line">        curl --header <span class="string">"Content-Type:application/json"</span> --request POST --data <span class="string">'&#123;"apiVersion":"v1", "kind": "Binding", "metadata": &#123;"name": "'</span><span class="variable">$PODNAME</span><span class="string">'"&#125;, "target": &#123;"apiVersion": "v1", "kind"</span></span><br><span class="line"><span class="string">: "Node", "name": "'</span><span class="variable">$CHOSEN</span><span class="string">'"&#125;&#125;'</span> http://<span class="variable">$SERVER</span>/api/v1/namespaces/default/pods/<span class="variable">$PODNAME</span>/binding/</span><br><span class="line">        <span class="built_in">echo</span> <span class="string">"Assigned <span class="variable">$PODNAME</span> to <span class="variable">$CHOSEN</span>"</span></span><br><span class="line">    <span class="keyword">done</span></span><br><span class="line">    sleep 1</span><br><span class="line"><span class="keyword">done</span></span><br></pre></td></tr></table></figure>
 <h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
 <li><a href="https://kubernetes.io/docs/concepts/scheduling/" target="_blank" rel="noopener">Kubernetes Scheduler</a></li>
@@ -700,12 +700,6 @@ top:50vh;
     <div class="sidebar-content sidebar-content-show-archive">
           <div class="sidebar-panel-archives">
     <!-- 在ejs中将archive按照时间排序 -->
-    
-    
-    
-    
-    
-    
     
     
     
@@ -1587,9 +1581,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
-        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
-    
         <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
+    
+        <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
     
         <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
     
@@ -1599,19 +1593,19 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
     
-        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
     
         <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
-        <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+        <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
     
-        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
-    
         <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
@@ -1706,9 +1700,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
     
-        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
-    
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
     
