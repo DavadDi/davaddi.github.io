@@ -351,7 +351,9 @@
         <div class="container container-unloaded">
             <main class="main post-page">
     <article class="article-entry">
-        <h1 id="BPF-技术简介"><a href="#BPF-技术简介" class="headerlink" title="BPF 技术简介"></a>BPF 技术简介</h1><h2 id="1-BPF"><a href="#1-BPF" class="headerlink" title="1. BPF"></a>1. BPF</h2><p>BPF（Berkeley Packet Filter ），中文意思为伯克利包过滤器，是类 Unix 系统上数据链路层的一种原始接口，提供原始链路层封包的收发。1992 年，Steven McCanne 和 Van Jacobson 写了一篇《BSD数据包过滤：一种新的用户级包捕获架构》的论文。在文中，作者描述了他们如何在 Unix 内核实现网络数据包过滤，这种新的技术比当时最先进的数据包过滤技术快 20 倍。BPF 在数据包过滤上引入了两大革新：</p>
+        <h1 id="BPF-技术简介"><a href="#BPF-技术简介" class="headerlink" title="BPF 技术简介"></a>BPF 技术简介</h1><p>由我参与翻译的图书 《Linux内核观测技术BPF》 已经在jd售卖，欢迎有兴趣学习的选购。链接地址 <a href="https://item.jd.com/72110825905.html" target="_blank" rel="noopener">https://item.jd.com/72110825905.html</a></p>
+<p>”eBPF 是我见过的 Linux 中最神奇的技术，没有之一，已成为 Linux 内核中顶级子模块，从 tcpdump 中用作网络包过滤的经典 cbpf，到成为通用 Linux 内核技术的 eBPF，已经完成华丽蜕变，为应用与神奇的内核打造了一座桥梁，在系统跟踪、观测、性能调优、安全和网络等领域发挥重要的角色。eBPF 为 Service Mesh 打造了具备 API 感知和安全高效的容器网络方案 Cilium，底层正是完全基于 eBPF 技术“</p>
+<h2 id="1-BPF"><a href="#1-BPF" class="headerlink" title="1. BPF"></a>1. BPF</h2><p>BPF（Berkeley Packet Filter ），中文意思为伯克利包过滤器，是类 Unix 系统上数据链路层的一种原始接口，提供原始链路层封包的收发。1992 年，Steven McCanne 和 Van Jacobson 写了一篇《BSD数据包过滤：一种新的用户级包捕获架构》的论文。在文中，作者描述了他们如何在 Unix 内核实现网络数据包过滤，这种新的技术比当时最先进的数据包过滤技术快 20 倍。BPF 在数据包过滤上引入了两大革新：</p>
 <ul>
 <li><p>一个新的虚拟机 (VM) 设计，可以有效地工作在基于寄存器结构的 CPU 之上；</p>
 </li>
@@ -590,6 +592,7 @@
 <li><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">BPF Documentation</a>  <a href="https://www.kernel.org/doc/html/latest/bpf/bpf_devel_QA.html#q-how-do-i-indicate-which-tree-bpf-vs-bpf-next-my-patch-should-be-applied-to" target="_blank" rel="noopener">HOWTO interact with BPF subsystem</a></li>
 <li><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">Linux 内核 BPF 文档</a></li>
 <li><a href="http://www.brendangregg.com/ebpf.html" target="_blank" rel="noopener">Linux Extended BPF (eBPF) Tracing Tools</a>  Brendan Gregg</li>
+<li><a href="https://mp.weixin.qq.com/s/3BQU9AYh1ScZ_1V17BJ4wg" target="_blank" rel="noopener">性能提升40%: 腾讯 TKE 用 eBPF绕过 conntrack 优化K8s Service</a></li>
 </ol>
 
     </article>
@@ -750,6 +753,8 @@ top:50vh;
     <div class="sidebar-content sidebar-content-show-archive">
           <div class="sidebar-panel-archives">
     <!-- 在ejs中将archive按照时间排序 -->
+    
+    
     
     
     
@@ -1696,9 +1701,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
-    
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     
@@ -1805,9 +1810,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
     
-        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
-    
         <span class="sidebar-category-name" data-categories="serverless"><span class="iconfont-archer">&#xe60a;</span>serverless</span>
+    
+        <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
     
         <span class="sidebar-category-name" data-categories="prometheus"><span class="iconfont-archer">&#xe60a;</span>prometheus</span>
     
