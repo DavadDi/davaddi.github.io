@@ -364,11 +364,11 @@
 <p>由于这些巨大的改进，所有的 Unix 系统都选择采用 BPF 作为网络数据包过滤技术，直到今天，许多 Unix 内核的派生系统中（包括 Linux 内核）仍使用该实现。</p>
 <p>tcpdump 的底层采用 BPF 作为底层包过滤技术，我们可以在命令后面增加 ”-d“ 来查看 tcpdump 过滤条件的底层汇编指令。</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">$ tcpdump -d <span class="string">'ip and tcp port 8080'</span></span><br><span class="line">(000) ldh      [12]</span><br><span class="line">(001) jeq      <span class="comment">#0x800           jt 2	jf 12</span></span><br><span class="line">(002) ldb      [23]</span><br><span class="line">(003) jeq      <span class="comment">#0x6             jt 4	jf 12</span></span><br><span class="line">(004) ldh      [20]</span><br><span class="line">(005) jset     <span class="comment">#0x1fff          jt 12	jf 6</span></span><br><span class="line">(006) ldxb     4*([14]&amp;0xf)</span><br><span class="line">(007) ldh      [x + 14]</span><br><span class="line">(008) jeq      <span class="comment">#0x1f90          jt 11	jf 9</span></span><br><span class="line">(009) ldh      [x + 16]</span><br><span class="line">(010) jeq      <span class="comment">#0x1f90          jt 11	jf 12</span></span><br><span class="line">(011) ret      <span class="comment">#262144</span></span><br><span class="line">(012) ret      <span class="comment">#0</span></span><br></pre></td></tr></table></figure>
-<p>图 1  tcpdump 底层汇编指令</p>
+<p>图 1-1  tcpdump 底层汇编指令</p>
 <p>BPF 工作在内核层，BPF 的架构图如下 [来自于bpf-usenix93]：</p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/image-20200419215511484.png" style="zoom:50%;"></p>
-<p>图 1 tcpdump 运行架构 </p>
-<h2 id="2-eBPF"><a href="#2-eBPF" class="headerlink" title="2. eBPF"></a>2. eBPF</h2><h3 id="2-1-eBPF-介绍"><a href="#2-1-eBPF-介绍" class="headerlink" title="2.1 eBPF 介绍"></a>2.1 eBPF 介绍</h3><p>2014 年初，Alexei Starovoitov 实现了 eBPF（extended Berkeley Packet Filter）。eBPF 最早出现在 3.18 内核中，此后原来的 BPF 就被称为经典 BPF，缩写 cBPF（classic BPF），cBPF 现在已经基本废弃。现在，Linux 内核只运行 eBPF，内核会将加载的 cBPF 字节码透明地转换成 eBPF 再执行。</p>
+<p>图 1-2 tcpdump 运行架构 </p>
+<h2 id="2-eBPF"><a href="#2-eBPF" class="headerlink" title="2. eBPF"></a>2. eBPF</h2><h3 id="2-1-eBPF-介绍"><a href="#2-1-eBPF-介绍" class="headerlink" title="2.1 eBPF 介绍"></a>2.1 eBPF 介绍</h3><p>2014 年初，Alexei Starovoitov 实现了 eBPF（extended Berkeley Packet Filter）。经过重新设计，eBPF 演进为一个通用执行引擎，可基于此开发性能分析工具、软件定义网络等诸多场景。eBPF 最早出现在 3.18 内核中，此后原来的 BPF 就被称为经典 BPF，缩写 cBPF（classic BPF），cBPF 现在已经基本废弃。现在，Linux 内核只运行 eBPF，内核会将加载的 cBPF 字节码透明地转换成 eBPF 再执行。</p>
 <p>eBPF 新的设计针对现代硬件进行了优化，所以 eBPF 生成的指令集比旧的 BPF 解释器生成的机器码执行得更快。扩展版本也增加了虚拟机中的寄存器数量，将原有的 2 个 32 位寄存器增加到 10 个 64 位寄存器。由于寄存器数量和宽度的增加，开发人员可以使用函数参数自由交换更多的信息，编写更复杂的程序。总之，这些改进使 eBPF 版本的速度比原来的 BPF 提高了 4 倍。</p>
 <table>
 <thead>
@@ -379,6 +379,11 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>内核版本</td>
+<td>Linux 2.1.75（1997年）</td>
+<td>Linux 3.18（2014年）[4.x for kprobe/uprobe/tracepoint/perf-event]</td>
+</tr>
 <tr>
 <td>寄存器数目</td>
 <td>2个：A, X</td>
@@ -407,14 +412,18 @@
 </tbody>
 </table>
 <p>表格 1 cBPF 与 eBPF 对比</p>
+<blockquote>
+<p>eBPF 在 Linux 3.18 版本以后引入，并不代表只能在内核 3.18+ 版本上运行，低版本的内核升级到最新也可以使用 eBPF 能力，只是可能部分功能受限，比如我就是在 Linux 发行版本 CentOS Linux release 7.7.1908 内核版本 3.10.0-1062.9.1.el7.x86_64 上运行 eBPF 在生产环境上搜集和排查网络问题。</p>
+</blockquote>
 <p>eBPF 实现的最初目标是优化处理网络过滤器的内部 BPF 指令集。当时，BPF 程序仍然限于内核空间使用，只有少数用户空间程序可以编写内核处理的 BPF 过滤器，例如：tcpdump和 seccomp。时至今日，这些程序仍基于旧的 BPF 解释器生成字节码，但内核中会将这些指令转换为高性能的内部表示。                                 </p>
 <p>2014 年 6 月，<strong>eBPF 扩展到用户空间，这也成为了 BPF 技术的转折点</strong>。 正如 Alexei 在提交补丁的注释中写到：“这个补丁展示了 eBPF 的潜力”。当前，eBPF 不再局限于网络栈，已经成为内核顶级的子系统。eBPF 程序架构强调安全性和稳定性，看上去更像内核模块，但与内核模块不同，eBPF 程序不需要重新编译内核，并且可以确保 eBPF 程序运行完成，而不会造成系统的崩溃。</p>
-<p>于此同时，eBPF 也逐渐在系统跟踪、观测、性能调优、安全和网络等领域发挥重要的角色。Facebook、NetFlix 、CloudFlare 等知名互联网公司内部广泛采用基于 eBPF 技术的各种程序用于性能分析、排查问题、负载均衡、防范 DDoS攻击，据相关信息显示在 Facebook 的机器上内置一系列 eBPF 的相关工具。</p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/bpf-basic-arch.png" alt=""></p>
-<p>图 0 BPF 架构图</p>
-<p>相对于系统的性能分析和观察，eBPF 技术在网络技术中的表现，更是让人眼前一亮，BPF 技术与 XDP（eXpress Data Path） 和 TC（Traffic Control） 组合可以实现功能更加强大的网络功能，更可为 SDN 软件定义网络提供基础支撑。XDP 只作用与网络包的 Ingress 层面，BPF 钩子位于<strong>网络驱动中尽可能早的位置</strong>，<strong>无需进行原始包的复制</strong>就可以实现最佳的数据包处理性能，挂载的 BPF 程序是运行过滤的理想选择，可用于丢弃恶意或非预期的流量、进行 DDOS 攻击保护等场景；而 TC Ingress 比 XDP 技术处于更高层次的位置，BPF 程序在 L3 层之前运行，可以访问到与数据包相关的大部分元数据，是本地节点处理的理想的地方，可以用于流量监控或者 L3/L4 的端点策略控制，同时配合 TC egress 则可实现对于容器环境下更高维度和级别的网络结构。</p>
+<p>图 2-1 BPF 架构图</p>
+<p>简述概括， eBPF 是一套通用执行引擎，提供了可基于系统或程序事件高效安全执行特定代码的通用能力，通用能力的使用者不再局限于内核开发者；eBPF 可由执行字节码指令、存储对象和 Helper 帮助函数组成，字节码指令在内核执行前必须通过 BPF 验证器 Verfier 的验证，同时在启用 BPF JIT 模式的内核中，会直接将字节码指令转成内核可执行的本地指令运行。</p>
+<p>同时，eBPF 也逐渐在观测（跟踪、性能调优等）、安全和网络等领域发挥重要的角色。Facebook、NetFlix 、CloudFlare 等知名互联网公司内部广泛采用基于 eBPF 技术的各种程序用于性能分析、排查问题、负载均衡、防范 DDoS 攻击，据相关信息显示在 Facebook 的机器上内置一系列 eBPF 的相关工具。</p>
+<p>相对于系统的性能分析和观测，eBPF 技术在网络技术中的表现，更是让人眼前一亮，BPF 技术与 XDP（eXpress Data Path） 和 TC（Traffic Control） 组合可以实现功能更加强大的网络功能，更可为 SDN 软件定义网络提供基础支撑。XDP 只作用与网络包的 Ingress 层面，BPF 钩子位于<strong>网络驱动中尽可能早的位置</strong>，<strong>无需进行原始包的复制</strong>就可以实现最佳的数据包处理性能，挂载的 BPF 程序是运行过滤的理想选择，可用于丢弃恶意或非预期的流量、进行 DDOS 攻击保护等场景；而 TC Ingress 比 XDP 技术处于更高层次的位置，BPF 程序在 L3 层之前运行，可以访问到与数据包相关的大部分元数据，是本地节点处理的理想的地方，可以用于流量监控或者 L3/L4 的端点策略控制，同时配合 TC egress 则可实现对于容器环境下更高维度和级别的网络结构。</p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/packet-processor-xdp.png" alt="packet-processor-xdp.png" style="zoom:75%;"></p>
-<p>图 2 XDP 技术架构</p>
+<p>图 2-2 XDP 技术架构</p>
 <p>eBPF 相关的知名的开源项目包括但不限于以下：</p>
 <ul>
 <li>Facebook 高性能 4 层负载均衡器 <a href="https://github.com/facebookincubator/katran" target="_blank" rel="noopener">Katran</a>；</li>
@@ -424,16 +433,17 @@
 </ul>
 <p>越来越多的基于 eBPF 的项目如雨后脆笋一样开始蓬勃发展，而且逐步在社区中异军突起，成为一道风景线。比如 IO Visor 项目的 BCC 工具，为性能分析和观察提供了更加丰富的工具集：<a href="https://github.com/iovisor/bcc" target="_blank" rel="noopener">图片来源</a></p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/bcc-tools.png" alt="image-20200423080103673" style="zoom:50%;"></p>
-<p>图 3 Linux bcc/BPF 观测工具</p>
+<p>图 2-3 Linux bcc/BPF 观测工具</p>
 <p>同时，IO Visor 的 <a href="https://github.com/iovisor/bpf-docs" target="_blank" rel="noopener">bpf-docs</a> 包含了日常的文档，可以用于学习。</p>
 <blockquote>
 <p> 由于 eBPF 还在快速发展期，内核中的功能也日趋增强，一般推荐基于Linux 4.4+ (4.9 以上会更好) 内核的来使用 eBPF。部分 Linux Event 和 BPF 版本支持见下图：</p>
 <p> <img src="https://www.do1618.com/wp-content/uploads/2020/08/linux_kernel_event_bpf.png" alt="linux_kernel_bpf" style="zoom:50%;"></p>
-<p> 图 4 Linux 事件和 BPF 版本支持</p>
+<p> 图 2-4 Linux 事件和 BPF 版本支持</p>
 </blockquote>
-<h3 id="2-2-eBPF-架构（观测）"><a href="#2-2-eBPF-架构（观测）" class="headerlink" title="2.2 eBPF 架构（观测）"></a>2.2 eBPF 架构（观测）</h3><p>基于 Linux 系统的观测，eBPF 整体结构图如下：</p>
+<h3 id="2-2-eBPF-架构（观测）"><a href="#2-2-eBPF-架构（观测）" class="headerlink" title="2.2 eBPF 架构（观测）"></a>2.2 eBPF 架构（观测）</h3><p>基于 Linux 系统的观测工具中，eBPF 有着得天独厚的优势，高效、生产安全且内核中内置，特别的可以在内核中完成数据分析聚合比如直方图，与将数据发送到用户空间分析聚合相比，能够节省大量的数据复制传递带来的 CPU 消耗。</p>
+<p>eBPF 整体结构图如下：</p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/linux_ebpf_internals.png" alt="ebpf-arch" style="zoom:50%;"></p>
-<p>图 5 eBPF 观测架构</p>
+<p>图 2-5 eBPF 观测架构</p>
 <p>eBPF 分为用户空间程序和内核程序两部分：</p>
 <ul>
 <li>用户空间程序负责加载 BPF 字节码至内核，如需要也会负责读取内核回传的统计信息或者事件详情；</li>
@@ -461,9 +471,11 @@
 </blockquote>
 <h3 id="2-3-eBPF-的限制"><a href="#2-3-eBPF-的限制" class="headerlink" title="2.3 eBPF 的限制"></a>2.3 eBPF 的限制</h3><p>eBPF 技术虽然强大，但是为了保证内核的处理安全和及时响应，内核中的 eBPF 技术也给予了诸多限制，当然随着技术的发展和演进，限制也在逐步放宽或者提供了对应的解决方案。</p>
 <ul>
-<li><p>eBPF 程序不能调用任意的内核参数，只限于内核模块中列出的 BPF Helper 函数，函数支持列表也随着内核的演进在不断增加；（添加个数说明）</p>
+<li><p>eBPF 程序不能调用任意的内核参数，只限于内核模块中列出的 BPF Helper 函数，函数支持列表也随着内核的演进在不断增加。（todo 添加个数说明）</p>
 </li>
-<li><p>eBPF 程序中循环次数限制，这主要是用来防止在 kprobes 中插入任意的循环，导致锁住整个系统；解决办法包括展开循环，并为需要循环的常见用途添加辅助函数。Linux 5.3 在 BPF 中包含了对有界循环的支持，它有一个可验证的运行时间上限；</p>
+<li><p>eBPF 程序不允许包含无法到达的指令，防止加载无效代码，延迟程序的终止。</p>
+</li>
+<li><p>eBPF 程序中循环次数限制且必须在有限时间内结束，这主要是用来防止在 kprobes 中插入任意的循环，导致锁住整个系统；解决办法包括展开循环，并为需要循环的常见用途添加辅助函数。Linux 5.3 在 BPF 中包含了对有界循环的支持，它有一个可验证的运行时间上限。</p>
 </li>
 <li><p>eBPF 堆栈大小被限制在 MAX_BPF_STACK，截止到内核 Linux 5.8 版本，被设置为 512；参见 <a href="https://github.com/torvalds/linux/blob/v5.8/include/linux/filter.h" target="_blank" rel="noopener">include/linux/filter.h</a>，这个限制特别是在栈上存储多个字符串缓冲区时：一个char[256]缓冲区会消耗这个栈的一半。目前没有计划增加这个限制，解决方法是改用 bpf 映射存储，它实际上是无限的。</p>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* BPF program can access up to 512 bytes of stack space. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MAX_BPF_STACK	512</span></span><br></pre></td></tr></table></figure>
@@ -493,6 +505,11 @@
 <td>通过验证器进行检查，可以保障内核安全</td>
 </tr>
 <tr>
+<td>内核函数</td>
+<td>可以调用内核函数</td>
+<td>只能通过 BPF Helper 函数调用</td>
+</tr>
+<tr>
 <td>编译性</td>
 <td>需要编译内核</td>
 <td>不需要编译内核，引入头文件即可</td>
@@ -500,12 +517,12 @@
 <tr>
 <td>运行</td>
 <td>基于相同内核运行</td>
-<td>基于稳定ABI的 BPF 程序可以编译一次，各处运行</td>
+<td>基于稳定 ABI 的 BPF 程序可以编译一次，各处运行</td>
 </tr>
 <tr>
 <td>与应用程序交互</td>
 <td>打印日志或文件</td>
-<td>通过基于 perf_event map 结构</td>
+<td>通过 perf_event 或 map 结构</td>
 </tr>
 <tr>
 <td>数据结构丰富性</td>
@@ -516,6 +533,16 @@
 <td><strong>入门门槛</strong></td>
 <td>高</td>
 <td>低</td>
+</tr>
+<tr>
+<td><strong>升级</strong></td>
+<td>需要卸载和加载，可能导致处理流程中断</td>
+<td>原子替换升级，不会造成处理流程中断</td>
+</tr>
+<tr>
+<td>内核内置</td>
+<td>视情况而定</td>
+<td>内核内置支持</td>
 </tr>
 </tbody>
 </table>
@@ -532,7 +559,7 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">uptime</span><br><span class="line">dmesg | tail</span><br><span class="line">vmstat 1</span><br><span class="line">mpstat -P ALL 1</span><br><span class="line">pidstat 1</span><br><span class="line">iostat -xz 1</span><br><span class="line">free -m</span><br><span class="line">sar -n DEV 1</span><br><span class="line">sar -n TCP,ETCP 1</span><br><span class="line">top</span><br></pre></td></tr></table></figure>
 <p><strong>60s 系列 BPF 版本如下：</strong></p>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/ebpf_60s.png" alt="ebpf_60s" style="zoom:50%;"></p>
-<p>图 6 60s 排查之 BPF 版本</p>
+<p>图 3-1 60s 排查之 BPF 版本</p>
 <p>对于在系统中运行的 “闪电侠” 程序，运行周期非常短，但是可能会带来系统的抖动延时，我们采用 <code>top</code> 命令查看一般情况下难以发现，我们可以使用 BCC 提供的工具 <code>execsnoop</code> 来进行排查：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Trace file opens with process and filename: opensnoop</span></span><br><span class="line"><span class="comment">#/usr/share/bcc/tools/execsnoop </span></span><br><span class="line">PCOMM            PID    PPID   RET ARGS</span><br><span class="line">sleep            3334   21029    0 /usr/bin/sleep 3</span><br><span class="line">sleep            3339   21029    0 /usr/bin/sleep 3</span><br><span class="line">conntrack        3341   1112     0 /usr/sbin/conntrack --stats</span><br><span class="line">conntrack        3342   1112     0 /usr/sbin/conntrack --count</span><br><span class="line">sleep            3344   21029    0 /usr/bin/sleep 3</span><br><span class="line">iptables-save    3347   9211     0 /sbin/iptables-save -t filter</span><br><span class="line">iptables-save    3348   9211     0 /sbin/iptables-save -t nat</span><br></pre></td></tr></table></figure>
 <h3 id="3-2-slab-dentry-过大导致的网络抖动排查"><a href="#3-2-slab-dentry-过大导致的网络抖动排查" class="headerlink" title="3.2 slab dentry 过大导致的网络抖动排查"></a>3.2 <strong>slab dentry 过大导致的网络抖动排查</strong></h3><p><strong>现象</strong></p>
@@ -552,7 +579,7 @@
 <p><code>profile</code>  配合 <code>FlameGraph</code> 可以轻松帮我们绘制出 CPU 使用的火焰图。</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ profile -af 30 &gt; out.stacks01</span><br><span class="line">$ git <span class="built_in">clone</span> https://github.com/brendangregg/FlameGraph</span><br><span class="line">$ <span class="built_in">cd</span> FlameGraph</span><br><span class="line">$ ./flamegraph.pl --color=java &lt; ../out.stacks01 &gt; out.svg</span><br></pre></td></tr></table></figure>
 <p><img src="https://www.do1618.com/wp-content/uploads/2020/08/flame.png" alt="image-20200806194324643" style="zoom: 67%;"></p>
-<p>图 7 火焰图</p>
+<p>图 3-2 火焰图</p>
 <h3 id="3-3-排查网络调用来源"><a href="#3-3-排查网络调用来源" class="headerlink" title="3.3 排查网络调用来源"></a>3.3 排查网络调用来源</h3><p>在生产场景下，会有些特定场景需要抓取连接到外网特定地址的程序，这时候我们可以采用 BCC 工具集中的 <code>tcplife</code> 来定位。</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">/usr/share/bcc/tools/tcplife -h</span><br><span class="line">usage: tcplife [-h] [-T] [-t] [-w] [-s] [-p PID] [-L LOCALPORT]</span><br><span class="line">               [-D REMOTEPORT]</span><br><span class="line"></span><br><span class="line">Trace the lifespan of TCP sessions and summarize</span><br><span class="line"></span><br><span class="line">optional arguments:</span><br><span class="line">  -h, --help            show this help message and exit</span><br><span class="line">  -T, --time            include time column on output (HH:MM:SS)</span><br><span class="line">  -t, --timestamp       include timestamp on output (seconds)</span><br><span class="line">  -w, --wide            wide column output (fits IPv6 addresses)</span><br><span class="line">  -s, --csv             comma separated values output</span><br><span class="line">  -p PID, --pid PID     trace this PID only</span><br><span class="line">  -L LOCALPORT, --localport LOCALPORT</span><br><span class="line">                        comma-separated list of local ports to trace.</span><br><span class="line">  -D REMOTEPORT, --remoteport REMOTEPORT</span><br><span class="line">                        comma-separated list of remote ports to trace.</span><br><span class="line"></span><br><span class="line">examples:</span><br><span class="line">    ./tcplife           # trace all TCP connect()s</span><br><span class="line">    ./tcplife -t        # include time column (HH:MM:SS)</span><br><span class="line">    ./tcplife -w        # wider colums (fit IPv6)</span><br><span class="line">    ./tcplife -stT      # csv output, with times &amp; timestamps</span><br><span class="line">    ./tcplife -p 181    # only trace PID 181</span><br><span class="line">    ./tcplife -L 80     # only trace local port 80</span><br><span class="line">    ./tcplife -L 80,81  # only trace local ports 80 and 81</span><br><span class="line">    ./tcplife -D 80     # only trace remote port 80</span><br></pre></td></tr></table></figure>
 <p>通过在机器上使用 <code>tcplife</code> 来获取的网络连接信息，我们可以看到包括了 PID、COMM、本地 IP 地址、本地端口、远程 IP 地址和远程端口，通过这些信息非常方便排查到连接到特定 IP 地址的程序，尤其是连接的过程非常短暂，通过 <code>netstat</code> 等其他工具不容易排查的场景。</p>
@@ -569,7 +596,7 @@
 </ul>
 <p>更早期的工具则是使用 C 语言来编写 BPF 程序，使用 LLVM clang 编译成 BPF 代码，这对于普通使用者上手有不少门槛当前仅限于对于 eBPF 技术更加深入的学习场景。</p>
 <h3 id="4-1-BCC-版本-HelloWorld"><a href="#4-1-BCC-版本-HelloWorld" class="headerlink" title="4.1 BCC 版本 HelloWorld"></a>4.1 BCC 版本 HelloWorld</h3><p><img src="https://www.do1618.com/wp-content/uploads/2020/08/bcc-internals.png" style="zoom: 75%;"></p>
-<p>图 8 BCC 整体架构</p>
+<p>图 4-1 BCC 整体架构</p>
 <p>使用 BCC 前端绑定语言 Python 编写的 Hello World 版本：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">#!/usr/bin/python3</span><br><span class="line"></span><br><span class="line">from bcc import BPF</span><br><span class="line"></span><br><span class="line"># This may not work for 4.17 on x64, you need replace kprobe__sys_clone with kprobe____x64_sys_clone</span><br><span class="line">prog = &quot;&quot;&quot;</span><br><span class="line">	int kprobe__sys_clone(void *ctx) &#123;</span><br><span class="line">		bpf_trace_printk(&quot;Hello, World!\\n&quot;);</span><br><span class="line">		return 0;</span><br><span class="line">	&#125;</span><br><span class="line">&quot;&quot;&quot;</span><br><span class="line"></span><br><span class="line">b = BPF(text=prog, debug=0x04)</span><br><span class="line">b.trace_print()</span><br></pre></td></tr></table></figure>
 <p>运行程序前需要安装过 bcc 相关工具包，当运行正常的时候我们发现每当 <code>sys_clone</code> 系统调用时，运行的控制台上就会打印 “Hello, World!”，在打印文字前面还包含了调用程序的进程名称，进程 ID 等信息；</p>
@@ -591,18 +618,54 @@
 <p>其中 clang 编译中的选型 <code>-target bpf</code> 表明我们将代码编译成 bpf 的字节码。</p>
 <p>完整的程序参见：<a href="https://github.com/DavadDi/linux-observability-with-bpf/tree/master/code/chapter-2/hello_world" target="_blank" rel="noopener">hello_world</a>；更多的样例代码可以参见对应内核中 <code>kernel-src/samples/bpf/</code> 下的样例代码。</p>
 <h2 id="5-参考资料"><a href="#5-参考资料" class="headerlink" title="5. 参考资料"></a>5. 参考资料</h2><ol>
-<li><a href="https://www.tcpdump.org/papers/bpf-usenix93.pdf" target="_blank" rel="noopener">The BSD Packet Filter: A New Architecture for User-level Packet Capture</a></li>
-<li><a href="http://arthurchiao.art/blog/cilium-bpf-xdp-reference-guide-zh/" target="_blank" rel="noopener">[译] Cilium：BPF 和 XDP 参考指南（2019） </a>   <a href="https://docs.cilium.io/en/v1.8/bpf/" target="_blank" rel="noopener">Cillum BPF and XDP Reference Guide</a></li>
-<li><a href="https://blog.cloudflare.com/zh/cloudflare-architecture-and-how-bpf-eats-the-world-zh/" target="_blank" rel="noopener">Cloudflare架构以及BPF如何占据世界</a></li>
-<li><a href="https://www.luoow.com/dc_tw/106805603" target="_blank" rel="noopener">關於 BPF 和 eBPF 的筆記</a></li>
-<li><a href="https://qmonnet.github.io/whirl-offload/2016/09/01/dive-into-bpf/" target="_blank" rel="noopener">Dive into BPF: a list of reading material</a>  <a href="https://blog.csdn.net/F8qG7f9YD02Pe/article/details/79815702" target="_blank" rel="noopener">中文</a></li>
-<li><a href="https://www.ibm.com/developerworks/cn/linux/l-lo-eBPF-history/index.html" target="_blank" rel="noopener">eBPF 简史</a></li>
-<li><a href="https://www.youtube.com/watch?v=znBGt7oHJyQ" target="_blank" rel="noopener">https://www.youtube.com/watch?v=znBGt7oHJyQ</a></li>
-<li><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">BPF Documentation</a>  <a href="https://www.kernel.org/doc/html/latest/bpf/bpf_devel_QA.html#q-how-do-i-indicate-which-tree-bpf-vs-bpf-next-my-patch-should-be-applied-to" target="_blank" rel="noopener">HOWTO interact with BPF subsystem</a></li>
-<li><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">Linux 内核 BPF 文档</a></li>
-<li><a href="http://www.brendangregg.com/ebpf.html" target="_blank" rel="noopener">Linux Extended BPF (eBPF) Tracing Tools</a>  Brendan Gregg</li>
-<li><a href="https://mp.weixin.qq.com/s/3BQU9AYh1ScZ_1V17BJ4wg" target="_blank" rel="noopener">性能提升40%: 腾讯 TKE 用 eBPF绕过 conntrack 优化K8s Service</a></li>
-<li><a href="https://tonydeng.github.io/sdn-handbook/" target="_blank" rel="noopener">SDN handbook</a></li>
+<li><p><a href="https://www.tcpdump.org/papers/bpf-usenix93.pdf" target="_blank" rel="noopener">The BSD Packet Filter: A New Architecture for User-level Packet Capture</a></p>
+</li>
+<li><p><a href="http://arthurchiao.art/blog/cilium-bpf-xdp-reference-guide-zh/" target="_blank" rel="noopener">[译] Cilium：BPF 和 XDP 参考指南（2019） </a>   <a href="https://docs.cilium.io/en/v1.8/bpf/" target="_blank" rel="noopener">Cillum BPF and XDP Reference Guide</a></p>
+</li>
+<li><p><a href="https://blog.cloudflare.com/zh/cloudflare-architecture-and-how-bpf-eats-the-world-zh/" target="_blank" rel="noopener">Cloudflare架构以及BPF如何占据世界</a></p>
+</li>
+<li><p><a href="https://www.luoow.com/dc_tw/106805603" target="_blank" rel="noopener">關於 BPF 和 eBPF 的筆記</a></p>
+</li>
+<li><p><a href="https://qmonnet.github.io/whirl-offload/2016/09/01/dive-into-bpf/" target="_blank" rel="noopener">Dive into BPF: a list of reading material</a>  <a href="https://blog.csdn.net/F8qG7f9YD02Pe/article/details/79815702" target="_blank" rel="noopener">中文</a></p>
+</li>
+<li><p><a href="https://www.ibm.com/developerworks/cn/linux/l-lo-eBPF-history/index.html" target="_blank" rel="noopener">eBPF 简史</a></p>
+</li>
+<li><p><a href="https://www.youtube.com/watch?v=znBGt7oHJyQ" target="_blank" rel="noopener">https://www.youtube.com/watch?v=znBGt7oHJyQ</a></p>
+</li>
+<li><p><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">BPF Documentation</a>  <a href="https://www.kernel.org/doc/html/latest/bpf/bpf_devel_QA.html#q-how-do-i-indicate-which-tree-bpf-vs-bpf-next-my-patch-should-be-applied-to" target="_blank" rel="noopener">HOWTO interact with BPF subsystem</a></p>
+</li>
+<li><p><a href="https://www.infradead.org/~mchehab/kernel_docs/bpf/index.html" target="_blank" rel="noopener">Linux 内核 BPF 文档</a></p>
+</li>
+<li><p><a href="http://www.brendangregg.com/ebpf.html" target="_blank" rel="noopener">Linux Extended BPF (eBPF) Tracing Tools</a>  Brendan Gregg</p>
+</li>
+<li><p><a href="https://mp.weixin.qq.com/s/3BQU9AYh1ScZ_1V17BJ4wg" target="_blank" rel="noopener">性能提升40%: 腾讯 TKE 用 eBPF绕过 conntrack 优化K8s Service</a></p>
+</li>
+<li><p><a href="https://tonydeng.github.io/sdn-handbook/" target="_blank" rel="noopener">SDN handbook</a></p>
+</li>
+<li><p>Linux BPF 帮助文档 <a href="https://man7.org/linux/man-pages/man2/bpf.2.html" target="_blank" rel="noopener">bpf(2)</a>  <a href="https://man7.org/linux/man-pages/man7/bpf-helpers.7.html" target="_blank" rel="noopener">bpf-helpers(7)</a>  <a href="https://man7.org/linux/man-pages/man8/tc-bpf.8.html" target="_blank" rel="noopener">tc-bpf(8)</a> </p>
+<blockquote>
+<ol>
+<li><p>user commands</p>
+</li>
+<li><p>system calls</p>
+</li>
+<li><p>library functions</p>
+</li>
+<li><p>special files</p>
+</li>
+<li><p>file formats and filesystems</p>
+</li>
+<li><p>games</p>
+</li>
+<li><p>overview and miscellany section</p>
+</li>
+<li><p>administration and privileged commands</p>
+</li>
+</ol>
+<p>参考：<a href="https://man7.org/linux/man-pages/index.html" target="_blank" rel="noopener">https://man7.org/linux/man-pages/index.html</a></p>
+</blockquote>
+</li>
+<li></li>
 </ol>
 
     </article>
@@ -1669,13 +1732,11 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
     
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
+    
         <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
-    
-        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
-    
-        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
-    
-        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
     
@@ -1687,17 +1748,13 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="eds"><span class="iconfont-archer">&#xe606;</span>eds</span>
     
-        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
-    
-        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
-    
         <span class="sidebar-tag-name" data-tags="service_mesh"><span class="iconfont-archer">&#xe606;</span>service_mesh</span>
     
         <span class="sidebar-tag-name" data-tags="istio"><span class="iconfont-archer">&#xe606;</span>istio</span>
     
-        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
-    
         <span class="sidebar-tag-name" data-tags="microservices"><span class="iconfont-archer">&#xe606;</span>microservices</span>
+    
+        <span class="sidebar-tag-name" data-tags="golang"><span class="iconfont-archer">&#xe606;</span>golang</span>
     
         <span class="sidebar-tag-name" data-tags="coredns"><span class="iconfont-archer">&#xe606;</span>coredns</span>
     
@@ -1707,15 +1764,21 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="elasticserach"><span class="iconfont-archer">&#xe606;</span>elasticserach</span>
     
-        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
-    
         <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
+    
+        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
         <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
         <span class="sidebar-tag-name" data-tags="wp-editor.md"><span class="iconfont-archer">&#xe606;</span>wp-editor.md</span>
+    
+        <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
+    
+        <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     
@@ -1749,15 +1812,15 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="xds"><span class="iconfont-archer">&#xe606;</span>xds</span>
     
-        <span class="sidebar-tag-name" data-tags="bpf"><span class="iconfont-archer">&#xe606;</span>bpf</span>
-    
-        <span class="sidebar-tag-name" data-tags="ebpf"><span class="iconfont-archer">&#xe606;</span>ebpf</span>
-    
         <span class="sidebar-tag-name" data-tags="LetsEncrypt"><span class="iconfont-archer">&#xe606;</span>LetsEncrypt</span>
     
         <span class="sidebar-tag-name" data-tags="Certbot"><span class="iconfont-archer">&#xe606;</span>Certbot</span>
     
         <span class="sidebar-tag-name" data-tags="HTTPS"><span class="iconfont-archer">&#xe606;</span>HTTPS</span>
+    
+        <span class="sidebar-tag-name" data-tags="bpf"><span class="iconfont-archer">&#xe606;</span>bpf</span>
+    
+        <span class="sidebar-tag-name" data-tags="ebpf"><span class="iconfont-archer">&#xe606;</span>ebpf</span>
     
         <span class="sidebar-tag-name" data-tags="client-go"><span class="iconfont-archer">&#xe606;</span>client-go</span>
     
@@ -1802,13 +1865,11 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
     
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
+    
         <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
     
-        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
-    
         <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
-    
-        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
     
         <span class="sidebar-category-name" data-categories="golang"><span class="iconfont-archer">&#xe60a;</span>golang</span>
     
@@ -1819,6 +1880,8 @@ jsonContent:
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
     
         <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
     
