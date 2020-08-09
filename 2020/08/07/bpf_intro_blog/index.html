@@ -617,7 +617,23 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">build: <span class="variable">$&#123;BPFCODE.c&#125;</span> <span class="variable">$&#123;BPFLOADER&#125;</span></span><br><span class="line">	$(CLANG) -O2 -target bpf -c $(BPFCODE:=.c) $(CCINCLUDE) -o <span class="variable">$&#123;BPFCODE:=.o&#125;</span></span><br></pre></td></tr></table></figure>
 <p>其中 clang 编译中的选型 <code>-target bpf</code> 表明我们将代码编译成 bpf 的字节码。</p>
 <p>完整的程序参见：<a href="https://github.com/DavadDi/linux-observability-with-bpf/tree/master/code/chapter-2/hello_world" target="_blank" rel="noopener">hello_world</a>；更多的样例代码可以参见对应内核中 <code>kernel-src/samples/bpf/</code> 下的样例代码。</p>
-<h2 id="5-参考资料"><a href="#5-参考资料" class="headerlink" title="5. 参考资料"></a>5. 参考资料</h2><ol>
+<h2 id="5-国内大厂-eBPF-实践经验"><a href="#5-国内大厂-eBPF-实践经验" class="headerlink" title="5. 国内大厂 eBPF 实践经验"></a>5. 国内大厂 eBPF 实践经验</h2><ul>
+<li><p><a href="https://www.infoq.cn/article/OVCVwQijztA7JlexgDOc" target="_blank" rel="noopener">eBPF 在网易轻舟云原生的应用实践</a></p>
+</li>
+<li><p><a href="https://mp.weixin.qq.com/s?__biz=MzI5ODQ2MzI3NQ==&amp;mid=2247491111&amp;idx=2&amp;sn=db348d6f13e1df4b3b9aba2dce0ba0e4&amp;chksm=eca42763dbd3ae757530f6922ca1748736e42eb863e01076e94622c81be542e5582c9678874b&amp;scene=27#wechat_redirect" target="_blank" rel="noopener">性能提升40%: 腾讯 TKE 用 eBPF绕过 conntrack 优化K8s Service</a></p>
+</li>
+<li><p><a href="https://www.infoq.cn/article/Tc5Bugo5vBAkyaRb5CCU" target="_blank" rel="noopener">字节跳动：eBPF 技术实践：高性能 ACL</a></p>
+</li>
+<li><p><a href="https://www.infoq.cn/article/c6t2IL23O6EbdQgUpQhb" target="_blank" rel="noopener">阿里：eBPF Internal：Instructions and Runtime</a></p>
+</li>
+<li><p><a href="https://mp.weixin.qq.com/s?__biz=MzI5ODQ2MzI3NQ==&amp;mid=2247488831&amp;idx=1&amp;sn=3da3a976439d0134e3789a3e035ea1f0&amp;chksm=eca42c7bdbd3a56d35c482d07798ee9d48a2f1103724f78f0634953ab33d8bd1ab9700190fb6&amp;scene=27#wechat_redirect" target="_blank" rel="noopener">使用 ebpf 深入分析容器网络 dup 包问题</a></p>
+</li>
+<li><p><a href="https://www.infoq.cn/article/JmCbkA0XX9NqrcX6loIo" target="_blank" rel="noopener">eBay 云计算“网”事：网络超时篇</a></p>
+</li>
+<li><p><a href="https://www.infoq.cn/article/mu-1bFHNmrdd0kybgPXx" target="_blank" rel="noopener">字节跳动容器化场景下的性能优化实践</a></p>
+</li>
+</ul>
+<h2 id="6-参考资料"><a href="#6-参考资料" class="headerlink" title="6. 参考资料"></a>6. 参考资料</h2><ol>
 <li><p><a href="https://www.tcpdump.org/papers/bpf-usenix93.pdf" target="_blank" rel="noopener">The BSD Packet Filter: A New Architecture for User-level Packet Capture</a></p>
 </li>
 <li><p><a href="http://arthurchiao.art/blog/cilium-bpf-xdp-reference-guide-zh/" target="_blank" rel="noopener">[译] Cilium：BPF 和 XDP 参考指南（2019） </a>   <a href="https://docs.cilium.io/en/v1.8/bpf/" target="_blank" rel="noopener">Cillum BPF and XDP Reference Guide</a></p>
@@ -813,7 +829,7 @@ top:50vh;
         <div class="toc-catalog">
             <span class="iconfont-archer catalog-icon">&#xe613;</span><span>CATALOG</span>
         </div>
-        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#eBPF-技术简介"><span class="toc-number">1.</span> <span class="toc-text">eBPF 技术简介</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-BPF"><span class="toc-number">1.1.</span> <span class="toc-text">1. BPF</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-eBPF"><span class="toc-number">1.2.</span> <span class="toc-text">2. eBPF</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-eBPF-介绍"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 eBPF 介绍</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-eBPF-架构（观测）"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 eBPF 架构（观测）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-eBPF-的限制"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 eBPF 的限制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-eBPF-与内核模块对比"><span class="toc-number">1.2.4.</span> <span class="toc-text">2.4 eBPF 与内核模块对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-应用案例"><span class="toc-number">1.3.</span> <span class="toc-text">3. 应用案例</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-Linux-性能分析-60-秒-（BPF版本）"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 Linux 性能分析 60 秒 （BPF版本）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-slab-dentry-过大导致的网络抖动排查"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 slab dentry 过大导致的网络抖动排查</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-生成火焰图"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 生成火焰图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-排查网络调用来源"><span class="toc-number">1.3.4.</span> <span class="toc-text">3.3 排查网络调用来源</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-编写-BPF-程序"><span class="toc-number">1.4.</span> <span class="toc-text">4. 编写 BPF 程序</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-BCC-版本-HelloWorld"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 BCC 版本 HelloWorld</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-BPFTrace"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.3 BPFTrace</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-C-语言原生方式"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 C 语言原生方式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-参考资料"><span class="toc-number">1.5.</span> <span class="toc-text">5. 参考资料</span></a></li></ol></li></ol>
+        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#eBPF-技术简介"><span class="toc-number">1.</span> <span class="toc-text">eBPF 技术简介</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-BPF"><span class="toc-number">1.1.</span> <span class="toc-text">1. BPF</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-eBPF"><span class="toc-number">1.2.</span> <span class="toc-text">2. eBPF</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-eBPF-介绍"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 eBPF 介绍</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-eBPF-架构（观测）"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 eBPF 架构（观测）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-eBPF-的限制"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 eBPF 的限制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-eBPF-与内核模块对比"><span class="toc-number">1.2.4.</span> <span class="toc-text">2.4 eBPF 与内核模块对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-应用案例"><span class="toc-number">1.3.</span> <span class="toc-text">3. 应用案例</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-Linux-性能分析-60-秒-（BPF版本）"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 Linux 性能分析 60 秒 （BPF版本）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-slab-dentry-过大导致的网络抖动排查"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 slab dentry 过大导致的网络抖动排查</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-生成火焰图"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 生成火焰图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-排查网络调用来源"><span class="toc-number">1.3.4.</span> <span class="toc-text">3.3 排查网络调用来源</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-编写-BPF-程序"><span class="toc-number">1.4.</span> <span class="toc-text">4. 编写 BPF 程序</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-BCC-版本-HelloWorld"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 BCC 版本 HelloWorld</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-BPFTrace"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.3 BPFTrace</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-C-语言原生方式"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 C 语言原生方式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-国内大厂-eBPF-实践经验"><span class="toc-number">1.5.</span> <span class="toc-text">5. 国内大厂 eBPF 实践经验</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-参考资料"><span class="toc-number">1.6.</span> <span class="toc-text">6. 参考资料</span></a></li></ol></li></ol>
     </div>
     
     <div class="back-top iconfont-archer">&#xe639;</div>
@@ -826,8 +842,6 @@ top:50vh;
     <div class="sidebar-content sidebar-content-show-archive">
           <div class="sidebar-panel-archives">
     <!-- 在ejs中将archive按照时间排序 -->
-    
-    
     
     
     
@@ -1732,10 +1746,6 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Translation API"><span class="iconfont-archer">&#xe606;</span>Translation API</span>
     
-        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
-    
-        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
-    
         <span class="sidebar-tag-name" data-tags="kubernetes"><span class="iconfont-archer">&#xe606;</span>kubernetes</span>
     
         <span class="sidebar-tag-name" data-tags="cri"><span class="iconfont-archer">&#xe606;</span>cri</span>
@@ -1743,6 +1753,10 @@ top:50vh;
         <span class="sidebar-tag-name" data-tags="container"><span class="iconfont-archer">&#xe606;</span>container</span>
     
         <span class="sidebar-tag-name" data-tags="runtime"><span class="iconfont-archer">&#xe606;</span>runtime</span>
+    
+        <span class="sidebar-tag-name" data-tags="life"><span class="iconfont-archer">&#xe606;</span>life</span>
+    
+        <span class="sidebar-tag-name" data-tags="poetry"><span class="iconfont-archer">&#xe606;</span>poetry</span>
     
         <span class="sidebar-tag-name" data-tags="envoy"><span class="iconfont-archer">&#xe606;</span>envoy</span>
     
@@ -1766,9 +1780,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="serverless"><span class="iconfont-archer">&#xe606;</span>serverless</span>
     
-        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
-    
         <span class="sidebar-tag-name" data-tags="tools"><span class="iconfont-archer">&#xe606;</span>tools</span>
+    
+        <span class="sidebar-tag-name" data-tags="service mesh"><span class="iconfont-archer">&#xe606;</span>service mesh</span>
     
         <span class="sidebar-tag-name" data-tags="wordpress"><span class="iconfont-archer">&#xe606;</span>wordpress</span>
     
@@ -1776,9 +1790,9 @@ top:50vh;
     
         <span class="sidebar-tag-name" data-tags="Operators"><span class="iconfont-archer">&#xe606;</span>Operators</span>
     
-        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
-    
         <span class="sidebar-tag-name" data-tags="api-server"><span class="iconfont-archer">&#xe606;</span>api-server</span>
+    
+        <span class="sidebar-tag-name" data-tags="jwt"><span class="iconfont-archer">&#xe606;</span>jwt</span>
     
         <span class="sidebar-tag-name" data-tags="OAuth2"><span class="iconfont-archer">&#xe606;</span>OAuth2</span>
     
@@ -1865,9 +1879,9 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="google-cloud"><span class="iconfont-archer">&#xe60a;</span>google-cloud</span>
     
-        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
-    
         <span class="sidebar-category-name" data-categories="kubernetes"><span class="iconfont-archer">&#xe60a;</span>kubernetes</span>
+    
+        <span class="sidebar-category-name" data-categories="poetry"><span class="iconfont-archer">&#xe60a;</span>poetry</span>
     
         <span class="sidebar-category-name" data-categories="envoy"><span class="iconfont-archer">&#xe60a;</span>envoy</span>
     
@@ -1875,15 +1889,15 @@ jsonContent:
     
         <span class="sidebar-category-name" data-categories="elasticserach"><span class="iconfont-archer">&#xe60a;</span>elasticserach</span>
     
-        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
-    
         <span class="sidebar-category-name" data-categories="tools"><span class="iconfont-archer">&#xe60a;</span>tools</span>
+    
+        <span class="sidebar-category-name" data-categories="service-mesh"><span class="iconfont-archer">&#xe60a;</span>service-mesh</span>
     
         <span class="sidebar-category-name" data-categories="编程技术"><span class="iconfont-archer">&#xe60a;</span>编程技术</span>
     
-        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
-    
         <span class="sidebar-category-name" data-categories="编程技术/PHP"><span class="iconfont-archer">&#xe60a;</span>编程技术/PHP</span>
+    
+        <span class="sidebar-category-name" data-categories="Security"><span class="iconfont-archer">&#xe60a;</span>Security</span>
     
         <span class="sidebar-category-name" data-categories="kubernets"><span class="iconfont-archer">&#xe60a;</span>kubernets</span>
     
